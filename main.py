@@ -194,7 +194,9 @@ class AppWindow:
         Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH
     ]
     # Config values
+    _geometry = None
     _downsampling = 0.0
+    _path = None
 
     def __init__(self, width, height):
         self.settings = Settings()
@@ -673,16 +675,34 @@ class AppWindow:
 
         ok = gui.Button("OK")
         ok.set_on_clicked(self._on_aply_downsamling)
+        cancel = gui.Button("Cancel")
+        cancel.set_on_clicked(self._on_cancel_downsamling)
 
         dlg_layout.add_child(h)
-        dlg_layout.add_child(ok)
+        h2 = gui.Horiz()
+        h2.add_stretch()
+        h2.add_child(cancel)
+        h2.add_fixed(em)
+        h2.add_child(ok)
+        dlg_layout.add_child(h2)
 
         dlg.add_child(dlg_layout)
         self.window.show_dialog(dlg)
 
-    def _on_aply_downsamling(self):
-        print('Sampling')
+    def _on_cancel_downsamling(self):
         self.window.close_dialog()
+
+    def _on_aply_downsamling(self):
+        self.window.close_dialog()
+        if self._geometry is not None:
+            if self._downsampling == 0.0:
+                self._scene.scene.clear_geometry()
+                self._scene.scene.add_geometry("__model__", self._geometry,self.settings.material)
+            else:                                    
+                self._scene.scene.clear_geometry()
+                d_geometry = self._geometry.voxel_down_sample(voxel_size=self._downsampling)
+                self._scene.scene.add_geometry("__model__", d_geometry,
+                                                self.settings.material)
 
     def _on_doubleedit_value_change(self, value):
         print(value)
@@ -720,41 +740,58 @@ class AppWindow:
     def _on_about_ok(self):
         self.window.close_dialog()
 
-    def load(self, path):
-        self._scene.scene.clear_geometry()
-
-        geometry = None
-        
-
-        if geometry is None:
-            cloud = None
+    def _load_gui_on_main_thread(self):
+        print('Run on main start......')
+        # self.window.post_redraw()
+        if self._geometry is not None:
             try:
-                pynt_cloud = PyntCloud.from_file(path)
-                cloud = pynt_cloud.to_instance("open3d", mesh=False)
-            except Exception:
-                pass
-            if cloud is not None:
-                print("[Info] Successfully read", path)
-                print(cloud.has_colors())
-                if not cloud.has_normals():
-                    cloud.estimate_normals()
-                cloud.normalize_normals()
-                geometry = cloud
-            else:
-                print("[WARNING] Failed to read points", path)
-
-        if geometry is not None:
-            try:
-                self._scene.scene.add_geometry("__model__", geometry,
+                self._scene.scene.add_geometry("__model__", self._geometry,
                                                self.settings.material)
-                print('111111111111')
-                bounds = geometry.get_axis_aligned_bounding_box()
+                bounds = self._geometry.get_axis_aligned_bounding_box()
                 self._scene.setup_camera(60, bounds, bounds.get_center())
-                print(len(geometry.points))
+                print('Run on main done......')
                 
                 
             except Exception as e:
                 print(e)
+        self.window.close_dialog()
+
+
+    def _load_gui_on_separate_thread(self):
+        if self._geometry is None:
+            cloud = None
+            try:
+                pynt_cloud = PyntCloud.from_file(self._path)
+                cloud = pynt_cloud.to_instance("open3d", mesh=False)
+            except Exception:
+                pass
+            if cloud is not None:
+                print("[Info] Successfully read", self._path)
+                if not cloud.has_normals():
+                    cloud.estimate_normals()
+                cloud.normalize_normals()
+                self._geometry = cloud
+            else:
+                print("[WARNING] Failed to read points", self.path)
+            print('Run on separate done......')
+            gui.Application.instance.post_to_main_thread(self.window, self._load_gui_on_main_thread)
+        
+    def _show_processing_dialog(self):
+        em = self.window.theme.font_size
+        dlg = gui.Dialog("Processing data")
+        # Add the text
+        dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
+        dlg_layout.add_child(gui.Label("normalize the normals of point cloud"))
+        dlg.add_child(dlg_layout)
+        self.window.show_dialog(dlg)
+
+    def load(self, path):
+        self._scene.scene.clear_geometry()
+        self._geometry = None
+        self._path = path
+        self._show_processing_dialog()
+        gui.Application.instance.run_in_thread(self._load_gui_on_separate_thread)
+        
 
     def export_image(self, path, width, height):
 
