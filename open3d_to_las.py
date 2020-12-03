@@ -101,5 +101,40 @@ def main():
     points_kept = inFile.points[keep_points]
     print(points_kept)
 
+def crop_geo():
+    c_pcd = o3d.io.read_point_cloud("C:/Users/hungt/Downloads/cropped_2.ply")
+    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/points.las")
+    pcd = cloud.to_instance("open3d", mesh=False)
+    pcd_points = np.asarray(pcd.points)
+    c_pcd_points = np.asarray(c_pcd.points)
+    print(list(pcd_points))
+    r_pcd = np.reshape(pcd_points.T,(3,len(pcd_points)))
+    r_c_pcd = np.reshape(c_pcd_points.T,(3,len(c_pcd_points)))
+    print((r_pcd[0]))
+    print(len(r_pcd[1]))
+    print(len(r_pcd[2]))
+    print((r_c_pcd[0]))
+    print(len(r_c_pcd[1]))
+    print(len(r_c_pcd[2]))
+    r_x_pcd = np.setdiff1d(r_pcd[0],r_c_pcd[0])
+    r_y_pcd = np.setdiff1d(r_pcd[1],r_c_pcd[1])
+    r_z_pcd = np.setdiff1d(r_pcd[2],r_c_pcd[2])
+    print(len(r_x_pcd))
+    print(len(r_y_pcd))
+    print(len(r_z_pcd))
+    # ,c_pcd.get_axis_aligned_bounding_box()
+    # rc_pcd = pcd.crop(c_pcd.get_oriented_bounding_box())
+    # o3d.visualization.draw_geometries([pcd])
+
+def crop_geo_2():
+    c_pcd = o3d.io.read_point_cloud("C:/Users/hungt/Downloads/cropped_1.ply")
+    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/points.las")
+    pcd = cloud.to_instance("open3d", mesh=False)
+    dists = pcd.compute_point_cloud_distance(c_pcd)
+    dists = np.asarray(dists)
+    ind = np.where(dists > 0.01)[0]
+    pcd_without_cropped = pcd.select_by_index(ind)
+    o3d.visualization.draw_geometries([pcd_without_cropped])
+
 if __name__ == "__main__":
-    create()
+    crop_geo_2()
