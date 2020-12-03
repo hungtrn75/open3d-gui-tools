@@ -8,8 +8,12 @@ import os
 import platform
 import sys
 from pyntcloud import PyntCloud
+import pandas
+import laspy
+from laspy.file import File
+import pylas
 
-isMacOS = (platform.system() == "Darwin")
+isMacOS = platform.system() == "Darwin"
 
 
 class Settings:
@@ -87,7 +91,7 @@ class Settings:
             "reflectance": 0.5,
             "clearcoat": 0.2,
             "clearcoat_roughness": 0.2,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
         "Metal (rougher)": {
             "metallic": 1.0,
@@ -95,7 +99,7 @@ class Settings:
             "reflectance": 0.9,
             "clearcoat": 0.0,
             "clearcoat_roughness": 0.0,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
         "Metal (smoother)": {
             "metallic": 1.0,
@@ -103,7 +107,7 @@ class Settings:
             "reflectance": 0.9,
             "clearcoat": 0.0,
             "clearcoat_roughness": 0.0,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
         "Plastic": {
             "metallic": 0.0,
@@ -111,7 +115,7 @@ class Settings:
             "reflectance": 0.5,
             "clearcoat": 0.5,
             "clearcoat_roughness": 0.2,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
         "Glazed ceramic": {
             "metallic": 0.0,
@@ -119,7 +123,7 @@ class Settings:
             "reflectance": 0.9,
             "clearcoat": 1.0,
             "clearcoat_roughness": 0.1,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
         "Clay": {
             "metallic": 0.0,
@@ -127,7 +131,7 @@ class Settings:
             "reflectance": 0.5,
             "clearcoat": 0.1,
             "clearcoat_roughness": 0.287,
-            "anisotropy": 0.0
+            "anisotropy": 0.0,
         },
     }
 
@@ -149,7 +153,7 @@ class Settings:
             Settings.LIT: rendering.Material(),
             Settings.UNLIT: rendering.Material(),
             Settings.NORMALS: rendering.Material(),
-            Settings.DEPTH: rendering.Material()
+            Settings.DEPTH: rendering.Material(),
         }
         self._materials[Settings.LIT].base_color = [0.9, 0.9, 0.9, 1.0]
         self._materials[Settings.LIT].shader = Settings.LIT
@@ -168,7 +172,7 @@ class Settings:
         self.apply_material = True
 
     def apply_material_prefab(self, name):
-        assert (self.material.shader == Settings.LIT)
+        assert self.material.shader == Settings.LIT
         prefab = Settings.PREFAB[name]
         for key, val in prefab.items():
             setattr(self.material, "base_" + key, val)
@@ -183,28 +187,30 @@ class AppWindow:
     MENU_OPEN = 1
     MENU_DOWNSAMPLING = 4
     MENU_EXPORT = 2
+    MENU_EXPORT_LAS = 5
     MENU_QUIT = 3
     MENU_SHOW_SETTINGS = 11
     MENU_ABOUT = 21
+    MENU_CLOSE_ALL = 6
+    MENU_CROP_GEOMETRY = 7
 
     DEFAULT_IBL = "default"
 
     MATERIAL_NAMES = ["Lit", "Unlit", "Normals", "Depth"]
-    MATERIAL_SHADERS = [
-        Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH
-    ]
+    MATERIAL_SHADERS = [Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH]
     # Config values
     _geometry = None
+    _d_geometry = None
     _downsampling = 0.0
     _path = None
+    _infile = None
 
     def __init__(self, width, height):
         self.settings = Settings()
         resource_path = gui.Application.instance.resource_path
         self.settings.new_ibl_name = resource_path + "/" + AppWindow.DEFAULT_IBL
 
-        self.window = gui.Application.instance.create_window(
-            "Open3D", width, height)
+        self.window = gui.Application.instance.create_window("Open3D", width, height)
         w = self.window  # to make the code more concise
 
         # 3D widget
@@ -212,15 +218,13 @@ class AppWindow:
         self._scene.scene = rendering.Open3DScene(w.renderer)
         self._scene.set_on_sun_direction_changed(self._on_sun_dir)
 
-        
-
         # ---- Settings panel ----
         # Rather than specifying sizes in pixels, which may vary in size based
         # on the monitor, especially on macOS which has 220 dpi monitors, use
         # the em-size. This way sizings will be proportional to the font size,
         # which will create a more visually consistent size across platforms.
         em = w.theme.font_size
-        
+
         separation_height = int(round(0.5 * em))
 
         # Widgets are laid out in layouts: gui.Horiz, gui.Vert,
@@ -232,16 +236,49 @@ class AppWindow:
         # between items in the widget, and a margins parameter, which specifies
         # the spacing of the left, top, right, bottom margins. (This acts like
         # the 'padding' property in CSS.)
-        
+
         self._settings_panel = gui.Vert(
-            0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.25 * em))
+            0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.25 * em)
+        )
 
         # Create a collapsable vertical widget, which takes up enough vertical
         # space for all its children when open, but only enough for text when
         # closed. This is useful for property pages, so the user can hide sets
         # of properties they rarely use.
-        view_ctrls = gui.CollapsableVert("View controls", 0.25 * em,
-                                         gui.Margins(em, 0, 0, 0))
+        db_ctrls = gui.CollapsableVert(
+            "DB Tree", 0.25 * em, gui.Margins(em, 0, 0, 0)
+        )
+
+        _db_main_checkbox = gui.Checkbox("source.las")
+        _db_crop_checkbox = gui.Checkbox("cropped.las")
+
+        _db_main_checkbox.set_on_checked(self._on_db_main_checked)
+        _db_crop_checkbox.set_on_checked(self._on_db_crop_checked)
+
+        self._fileedit = gui.TextEdit()
+        filedlgbutton = gui.Button("...")
+        filedlgbutton.horizontal_padding_em = 0.5
+        filedlgbutton.vertical_padding_em = 0
+        filedlgbutton.set_on_clicked(self._on_filedlg_button)
+        fileedit_layout = gui.Horiz()
+        fileedit_layout.add_child(gui.Label("Choose crop file"))
+        fileedit_layout.add_child(self._fileedit)
+        fileedit_layout.add_fixed(0.25 * em)
+        fileedit_layout.add_child(filedlgbutton)
+
+        db_ctrls.add_child(_db_main_checkbox)
+        db_ctrls.add_child(_db_crop_checkbox)
+        db_ctrls.add_fixed(0.1 * em)
+        db_ctrls.add_child(fileedit_layout)
+
+        self._settings_panel.add_child(db_ctrls)
+
+        view_ctrls = gui.CollapsableVert(
+            "View controls", 0.25 * em, gui.Margins(em, 0, 0, 0)
+        )
+
+        
+        
 
         self._arcball_button = gui.Button("Arcball")
         self._arcball_button.horizontal_padding_em = 0.5
@@ -312,8 +349,7 @@ class AppWindow:
         self._settings_panel.add_fixed(separation_height)
         self._settings_panel.add_child(view_ctrls)
 
-        advanced = gui.CollapsableVert("Advanced lighting", 0,
-                                       gui.Margins(em, 0, 0, 0))
+        advanced = gui.CollapsableVert("Advanced lighting", 0, gui.Margins(em, 0, 0, 0))
         advanced.set_is_open(False)
 
         self._use_ibl = gui.Checkbox("HDR map")
@@ -327,8 +363,7 @@ class AppWindow:
         advanced.add_child(h)
 
         self._ibl_map = gui.Combobox()
-        for ibl in glob.glob(gui.Application.instance.resource_path +
-                             "/*_ibl.ktx"):
+        for ibl in glob.glob(gui.Application.instance.resource_path + "/*_ibl.ktx"):
 
             self._ibl_map.add_item(os.path.basename(ibl[:-8]))
         self._ibl_map.selected_text = AppWindow.DEFAULT_IBL
@@ -366,8 +401,11 @@ class AppWindow:
         self._settings_panel.add_fixed(separation_height)
         self._settings_panel.add_child(advanced)
 
-        material_settings = gui.CollapsableVert("Material settings", 0,
-                                                gui.Margins(em, 0, 0, 0))
+        material_settings = gui.CollapsableVert(
+            "Material settings", 0, gui.Margins(em, 0, 0, 0)
+        )
+
+        # material_settings.set_is_open(False)
 
         self._shader = gui.Combobox()
         self._shader.add_item(AppWindow.MATERIAL_NAMES[0])
@@ -423,14 +461,19 @@ class AppWindow:
                 app_menu.add_item("Quit", AppWindow.MENU_QUIT)
             file_menu = gui.Menu()
             file_menu.add_item("Open...", AppWindow.MENU_OPEN)
+            file_menu.add_separator()
             file_menu.add_item("Downsamle PointCloud", AppWindow.MENU_DOWNSAMPLING)
+            file_menu.add_item("Crop Geometry", AppWindow.MENU_CROP_GEOMETRY)
+            file_menu.add_separator()
             file_menu.add_item("Export Current Image...", AppWindow.MENU_EXPORT)
+            file_menu.add_item("Export to .las file", AppWindow.MENU_EXPORT_LAS)
+            file_menu.add_separator()
+            file_menu.add_item("Close All", AppWindow.MENU_CLOSE_ALL)
             if not isMacOS:
                 file_menu.add_separator()
                 file_menu.add_item("Quit", AppWindow.MENU_QUIT)
             settings_menu = gui.Menu()
-            settings_menu.add_item("Lighting & Materials",
-                                   AppWindow.MENU_SHOW_SETTINGS)
+            settings_menu.add_item("Lighting & Materials", AppWindow.MENU_SHOW_SETTINGS)
             settings_menu.set_checked(AppWindow.MENU_SHOW_SETTINGS, True)
             help_menu = gui.Menu()
             help_menu.add_item("About", AppWindow.MENU_ABOUT)
@@ -456,40 +499,53 @@ class AppWindow:
         # window, so that the window can call the appropriate function when the
         # menu item is activated.
         w.set_on_menu_item_activated(AppWindow.MENU_OPEN, self._on_menu_open)
-        w.set_on_menu_item_activated(AppWindow.MENU_DOWNSAMPLING, self._on_menu_downsampling)
-        w.set_on_menu_item_activated(AppWindow.MENU_EXPORT,
-                                     self._on_menu_export)
+        w.set_on_menu_item_activated(
+            AppWindow.MENU_DOWNSAMPLING, self._on_menu_downsampling
+        )
+        w.set_on_menu_item_activated(AppWindow.MENU_EXPORT, self._on_menu_export)
+        w.set_on_menu_item_activated(
+            AppWindow.MENU_EXPORT_LAS, self._on_menu_export_las
+        )
         w.set_on_menu_item_activated(AppWindow.MENU_QUIT, self._on_menu_quit)
-        w.set_on_menu_item_activated(AppWindow.MENU_SHOW_SETTINGS,
-                                     self._on_menu_toggle_settings_panel)
+        w.set_on_menu_item_activated(AppWindow.MENU_CLOSE_ALL, self._on_menu_close_all)
+        w.set_on_menu_item_activated(
+            AppWindow.MENU_SHOW_SETTINGS, self._on_menu_toggle_settings_panel
+        )
         w.set_on_menu_item_activated(AppWindow.MENU_ABOUT, self._on_menu_about)
+        w.set_on_menu_item_activated(
+            AppWindow.MENU_CROP_GEOMETRY, self._on_menu_crop_geometry
+        )
         # ----
 
         self._apply_settings()
 
     def _apply_settings(self):
         bg_color = [
-            self.settings.bg_color.red, self.settings.bg_color.green,
-            self.settings.bg_color.blue, self.settings.bg_color.alpha
+            self.settings.bg_color.red,
+            self.settings.bg_color.green,
+            self.settings.bg_color.blue,
+            self.settings.bg_color.alpha,
         ]
         self._scene.scene.set_background_color(bg_color)
         self._scene.scene.show_skybox(self.settings.show_skybox)
         self._scene.scene.show_axes(self.settings.show_axes)
         if self.settings.new_ibl_name is not None:
-            self._scene.scene.scene.set_indirect_light(
-                self.settings.new_ibl_name)
+            self._scene.scene.scene.set_indirect_light(self.settings.new_ibl_name)
             # Clear new_ibl_name, so we don't keep reloading this image every
             # time the settings are applied.
             self.settings.new_ibl_name = None
         self._scene.scene.scene.enable_indirect_light(self.settings.use_ibl)
         self._scene.scene.scene.set_indirect_light_intensity(
-            self.settings.ibl_intensity)
+            self.settings.ibl_intensity
+        )
         sun_color = [
-            self.settings.sun_color.red, self.settings.sun_color.green,
-            self.settings.sun_color.blue
+            self.settings.sun_color.red,
+            self.settings.sun_color.green,
+            self.settings.sun_color.blue,
         ]
         self._scene.scene.scene.set_directional_light(
-            self.settings.sun_dir, sun_color, self.settings.sun_intensity)
+            self.settings.sun_dir, sun_color, self.settings.sun_intensity
+        )
         self._scene.scene.scene.enable_directional_light(self.settings.use_sun)
 
         if self.settings.apply_material:
@@ -505,12 +561,13 @@ class AppWindow:
         self._sun_intensity.int_value = self.settings.sun_intensity
         self._sun_dir.vector_value = self.settings.sun_dir
         self._sun_color.color_value = self.settings.sun_color
-        self._material_prefab.enabled = (
-            self.settings.material.shader == Settings.LIT)
-        c = gui.Color(self.settings.material.base_color[0],
-                      self.settings.material.base_color[1],
-                      self.settings.material.base_color[2],
-                      self.settings.material.base_color[3])
+        self._material_prefab.enabled = self.settings.material.shader == Settings.LIT
+        c = gui.Color(
+            self.settings.material.base_color[0],
+            self.settings.material.base_color[1],
+            self.settings.material.base_color[2],
+            self.settings.material.base_color[3],
+        )
         self._material_color.color_value = c
         self._point_size.double_value = self.settings.material.point_size
 
@@ -521,12 +578,31 @@ class AppWindow:
         r = self.window.content_rect
         width = 17 * theme.font_size
         # self._scene.frame = r
-        self._scene.frame = gui.Rect(width, 0, r.width - width,
-                                              r.height)
+        self._scene.frame = gui.Rect(width, 0, r.width - width, r.height)
         # height = min(r.height,
         #              self._settings_panel.calc_preferred_size(theme).height)
-        self._settings_panel.frame = gui.Rect(0, 0, width,
-                                              r.height)
+        self._settings_panel.frame = gui.Rect(0, 0, width, r.height)
+    
+    def _on_db_main_checked(self, state ):
+        print(state)
+
+    def _on_db_crop_checked(self, state ):
+        print(self)
+        print(state)
+
+    def _on_filedlg_button(self):
+        filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
+        filedlg.add_filter(".las", "LAS File(.las)")
+        filedlg.set_on_cancel(self._on_filedlg_cancel)
+        filedlg.set_on_done(self._on_filedlg_done)
+        self.window.show_dialog(filedlg)
+
+    def _on_filedlg_cancel(self):
+        self.window.close_dialog()
+
+    def _on_filedlg_done(self, path):
+        self._fileedit.text_value = path
+        self.window.close_dialog()
 
     def _set_mouse_mode_rotate(self):
         self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_CAMERA)
@@ -605,7 +681,10 @@ class AppWindow:
 
     def _on_material_color(self, color):
         self.settings.material.base_color = [
-            color.red, color.green, color.blue, color.alpha
+            color.red,
+            color.green,
+            color.blue,
+            color.alpha,
         ]
         self.settings.apply_material = True
         self._apply_settings()
@@ -616,12 +695,11 @@ class AppWindow:
         self._apply_settings()
 
     def _on_menu_open(self):
-        dlg = gui.FileDialog(gui.FileDialog.OPEN, "Choose file to load",
-                             self.window.theme)
-       
-        dlg.add_filter(
-            ".las",
-            "Point cloud files (.las)")
+        dlg = gui.FileDialog(
+            gui.FileDialog.OPEN, "Choose file to load", self.window.theme
+        )
+
+        dlg.add_filter(".las", "Point cloud files (.las)")
         dlg.add_filter(".las", "LAS files (.las)")
         dlg.add_filter("", "All files")
 
@@ -637,12 +715,83 @@ class AppWindow:
         self.window.close_dialog()
         self.load(filename)
 
+    def _on_menu_close_all(self):
+        self.window.title = "Open3D"
+        self._scene.scene.clear_geometry()
+        self._geometry = None
+        self._d_geometry = None
+        self._infile = None
+
+    def _on_menu_crop_geometry(self):
+        if self._geometry is not None and self._d_geometry is not None:
+            c_geometry = None
+            if self._geometry is None:
+                c_geometry = self._d_geometry
+            else:
+                c_geometry = self._geometry
+
+            if c_geometry is not None:
+                o3d.visualization.draw_geometries_with_editing([pcd])
+
+    def _on_menu_export_las(self):
+        if self._geometry is not None and self._d_geometry is not None:
+            dlg = gui.FileDialog(
+                gui.FileDialog.SAVE, "Choose file to save", self.window.theme
+            )
+            dlg.add_filter(".las", "LAS files (.las)")
+            dlg.set_on_cancel(self._on_file_dialog_cancel)
+            dlg.set_on_done(self._on_export_las_dialog_done)
+            self.window.show_dialog(dlg)
+
     def _on_menu_export(self):
-        dlg = gui.FileDialog(gui.FileDialog.SAVE, "Choose file to save",
-                             self.window.theme)
+        dlg = gui.FileDialog(
+            gui.FileDialog.SAVE, "Choose file to save", self.window.theme
+        )
         dlg.add_filter(".png", "PNG files (.png)")
         dlg.set_on_cancel(self._on_file_dialog_cancel)
         dlg.set_on_done(self._on_export_dialog_done)
+        self.window.show_dialog(dlg)
+
+    def _on_export_las_dialog_done(self, filename):
+        self.window.close_dialog()
+        e_geometry = None
+        if self._d_geometry is None:
+            e_geometry = self._geometry
+        else:
+            e_geometry = self._d_geometry
+
+        las = pylas.create(point_format_id=self._infile.point_format.id)
+
+        pcd_points = np.asarray(e_geometry.points)
+        len_shape = len(pcd_points)
+        reshape_points = np.reshape(pcd_points.T, (3, len_shape))
+        las.x = reshape_points[0]
+        las.y = reshape_points[1]
+        las.z = reshape_points[2]
+        if e_geometry.has_colors():
+            pcd_colors = np.asarray(e_geometry.colors)
+            reshape_colors = np.reshape(pcd_colors.T, (3, len_shape))
+            las.__setattr__("red", reshape_colors[0])
+            las.__setattr__("green", reshape_colors[1])
+            las.__setattr__("blue", reshape_colors[2])
+        # else:
+        #     white = np.full((1, len_shape), 65535)
+        #     las.__setattr__("red", white[0])
+        #     las.__setattr__("green", white[0])
+        #     las.__setattr__("blue", white[0])
+
+        las.write(filename)
+        self._on_export_las_success(filename)
+
+    def _on_export_las_success(self, filename):
+        em = self.window.theme.font_size
+        dlg = gui.Dialog("Export file")
+        dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
+        dlg_layout.add_child(gui.Label("Saved to " + filename))
+        ok = gui.Button("OK")
+        ok.set_on_clicked(self._on_cancel_downsamling)
+        dlg_layout.add_child(ok)
+        dlg.add_child(dlg_layout)
         self.window.show_dialog(dlg)
 
     def _on_export_dialog_done(self, filename):
@@ -656,7 +805,8 @@ class AppWindow:
     def _on_menu_toggle_settings_panel(self):
         self._settings_panel.visible = not self._settings_panel.visible
         gui.Application.instance.menubar.set_checked(
-            AppWindow.MENU_SHOW_SETTINGS, self._settings_panel.visible)
+            AppWindow.MENU_SHOW_SETTINGS, self._settings_panel.visible
+        )
 
     def _on_menu_downsampling(self):
         em = self.window.theme.font_size
@@ -696,13 +846,19 @@ class AppWindow:
         self.window.close_dialog()
         if self._geometry is not None:
             if self._downsampling == 0.0:
+                self._d_geometry = None
                 self._scene.scene.clear_geometry()
-                self._scene.scene.add_geometry("__model__", self._geometry,self.settings.material)
-            else:                                    
+                self._scene.scene.add_geometry(
+                    "__model__", self._geometry, self.settings.material
+                )
+            else:
                 self._scene.scene.clear_geometry()
-                d_geometry = self._geometry.voxel_down_sample(voxel_size=self._downsampling)
-                self._scene.scene.add_geometry("__model__", d_geometry,
-                                                self.settings.material)
+                self._d_geometry = self._geometry.voxel_down_sample(
+                    voxel_size=self._downsampling
+                )
+                self._scene.scene.add_geometry(
+                    "__model__", self._d_geometry, self.settings.material
+                )
 
     def _on_doubleedit_value_change(self, value):
         print(value)
@@ -741,27 +897,36 @@ class AppWindow:
         self.window.close_dialog()
 
     def _load_gui_on_main_thread(self):
-        print('Run on main start......')
-        # self.window.post_redraw()
+        print("Run on main start......")
         if self._geometry is not None:
             try:
-                self._scene.scene.add_geometry("__model__", self._geometry,
-                                               self.settings.material)
+                self._scene.scene.add_geometry(
+                    "__model__", self._geometry, self.settings.material
+                )
                 bounds = self._geometry.get_axis_aligned_bounding_box()
+                bounds.color = (1, 0, 0)
+                oriented = self._geometry.get_oriented_bounding_box()
+                oriented.color = (0, 1, 0)
+                self._scene.scene.add_geometry(
+                    "__bounds__", bounds, self.settings.material
+                )
+                self._scene.scene.add_geometry(
+                    "__oriented__", oriented, self.settings.material
+                )
                 self._scene.setup_camera(60, bounds, bounds.get_center())
-                print('Run on main done......')
                 
-                
+                print("Run on main done......")
+
             except Exception as e:
                 print(e)
         self.window.close_dialog()
-
 
     def _load_gui_on_separate_thread(self):
         if self._geometry is None:
             cloud = None
             try:
                 pynt_cloud = PyntCloud.from_file(self._path)
+                self._infile = pylas.read(self._path)
                 cloud = pynt_cloud.to_instance("open3d", mesh=False)
             except Exception:
                 pass
@@ -771,11 +936,14 @@ class AppWindow:
                     cloud.estimate_normals()
                 cloud.normalize_normals()
                 self._geometry = cloud
+                print(np.asarray(cloud.colors))
             else:
                 print("[WARNING] Failed to read points", self.path)
-            print('Run on separate done......')
-            gui.Application.instance.post_to_main_thread(self.window, self._load_gui_on_main_thread)
-        
+            print("Run on separate done......")
+            gui.Application.instance.post_to_main_thread(
+                self.window, self._load_gui_on_main_thread
+            )
+
     def _show_processing_dialog(self):
         em = self.window.theme.font_size
         dlg = gui.Dialog("Processing data")
@@ -788,13 +956,14 @@ class AppWindow:
     def load(self, path):
         self._scene.scene.clear_geometry()
         self._geometry = None
+        self._d_geometry = None
         self._path = path
+        self.window.title = path
+        self._infile = None
         self._show_processing_dialog()
         gui.Application.instance.run_in_thread(self._load_gui_on_separate_thread)
-        
 
     def export_image(self, path, width, height):
-
         def on_image(image):
             img = image
 
@@ -818,8 +987,7 @@ def main():
         if os.path.exists(path):
             w.load(path)
         else:
-            w.window.show_message_box("Error",
-                                      "Could not open file '" + path + "'")
+            w.window.show_message_box("Error", "Could not open file '" + path + "'")
 
     # Run the event loop. This will not return until the last window is closed.
     gui.Application.instance.run()

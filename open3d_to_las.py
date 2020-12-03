@@ -41,7 +41,6 @@ def create():
     las.__setattr__("red",reshape_colors[0])
     las.__setattr__("green",reshape_colors[1])
     las.__setattr__("blue",reshape_colors[2])
-    print(las.points)
     las.write('diagonal.las')
 
 def pylas_test():
