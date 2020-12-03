@@ -169,7 +169,6 @@ class Settings:
 
     def set_material(self, name):
         self.material = self._materials[name]
-        self.apply_material = True
 
     def apply_material_prefab(self, name):
         assert self.material.shader == Settings.LIT
@@ -734,7 +733,7 @@ class AppWindow:
                 o3d.visualization.draw_geometries_with_editing([pcd])
 
     def _on_menu_export_las(self):
-        if self._geometry is not None and self._d_geometry is not None:
+        if self._geometry is not None or self._d_geometry is not None:
             dlg = gui.FileDialog(
                 gui.FileDialog.SAVE, "Choose file to save", self.window.theme
             )
@@ -761,13 +760,16 @@ class AppWindow:
             e_geometry = self._d_geometry
 
         las = pylas.create(point_format_id=self._infile.point_format.id)
-
+        las.header = self._infile.header
         pcd_points = np.asarray(e_geometry.points)
         len_shape = len(pcd_points)
         reshape_points = np.reshape(pcd_points.T, (3, len_shape))
-        las.x = reshape_points[0]
-        las.y = reshape_points[1]
-        las.z = reshape_points[2]
+        las.__setattr__("x", reshape_points[0])
+        las.__setattr__("y", reshape_points[1])
+        las.__setattr__("z", reshape_points[2])
+        # las.x = reshape_points[0]
+        # las.y = reshape_points[1]
+        # las.z = reshape_points[2]
         if e_geometry.has_colors():
             pcd_colors = np.asarray(e_geometry.colors)
             reshape_colors = np.reshape(pcd_colors.T, (3, len_shape))
@@ -904,6 +906,7 @@ class AppWindow:
                     "__model__", self._geometry, self.settings.material
                 )
                 bounds = self._geometry.get_axis_aligned_bounding_box()
+                print(bounds)
                 bounds.color = (1, 0, 0)
                 oriented = self._geometry.get_oriented_bounding_box()
                 oriented.color = (0, 1, 0)

@@ -24,24 +24,33 @@ def find_first(item,array):
     return False
 
 def create():
-    r_las = pylas.read('C:/Users/hungt/Downloads/Test1.las')
-    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/Test1.las")
+    r_las = pylas.read('/Users/macbook/Downloads/Test1.las')
+
+    cloud = PyntCloud.from_file("/Users/macbook/Downloads/Test1.las")
     pcd = cloud.to_instance("open3d", mesh=False)
     dpcd = pcd
     # dpcd = pcd.voxel_down_sample(voxel_size=0.05)
     pcd_points = np.asarray(dpcd.points)
+    print(pcd_points/10)
+    print(r_las.points)
     pcd_colors = np.asarray(dpcd.colors)
     reshape_colors = np.reshape(pcd_colors.T,(3,len(pcd_colors)))
     las = pylas.create(point_format_id=r_las.point_format.id)
-    
+    las.header = r_las.header
     reshape_points = np.reshape(pcd_points.T,(3,len(pcd_points)))
+    # las.header.scales = r_las.header.scales
+    # las.header.offsets = r_las.header.offsets
     las.x = reshape_points[0]
     las.y = reshape_points[1]
     las.z = reshape_points[2]
-    las.__setattr__("red",reshape_colors[0])
-    las.__setattr__("green",reshape_colors[1])
-    las.__setattr__("blue",reshape_colors[2])
-    las.write('diagonal.las')
+    
+    # las.__setattr__("red",reshape_colors[0])
+    # las.__setattr__("green",reshape_colors[1])
+    # las.__setattr__("blue",reshape_colors[2])
+    
+    # print(las.header.scales)
+    las.write('/Users/macbook/Downloads/diagonal.las')
+
 
 def pylas_test():
     t_points = []
