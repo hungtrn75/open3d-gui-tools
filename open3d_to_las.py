@@ -24,24 +24,33 @@ def find_first(item,array):
     return False
 
 def create():
-    r_las = pylas.read('C:/Users/hungt/Downloads/Test1.las')
-    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/Test1.las")
+    r_las = pylas.read('C:/Users/hungt/Downloads/points.las')
+    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/points.las")
     pcd = cloud.to_instance("open3d", mesh=False)
     dpcd = pcd
     # dpcd = pcd.voxel_down_sample(voxel_size=0.05)
     pcd_points = np.asarray(dpcd.points)
-    pcd_colors = np.asarray(dpcd.colors)
-    reshape_colors = np.reshape(pcd_colors.T,(3,len(pcd_colors)))
+    print(r_las.header.offsets)
     las = pylas.create(point_format_id=r_las.point_format.id)
-    
+    las.header = r_las.header
+    scales =  r_las.header.scales
     reshape_points = np.reshape(pcd_points.T,(3,len(pcd_points)))
-    las.x = reshape_points[0]
-    las.y = reshape_points[1]
-    las.z = reshape_points[2]
-    las.__setattr__("red",reshape_colors[0])
-    las.__setattr__("green",reshape_colors[1])
-    las.__setattr__("blue",reshape_colors[2])
-    las.write('diagonal.las')
+    print( reshape_points[0])
+    las.__setitem__('X',reshape_points[0]/scales[0])
+    las.__setitem__('Y',reshape_points[1]/scales[1])
+    las.__setitem__('Z',reshape_points[2]/scales[2])
+    # las.x = reshape_points[0]
+    # las.y = reshape_points[1]
+    # las.z = reshape_points[2]
+    if pcd.has_colors():
+        pcd_colors = np.asarray(dpcd.colors)
+        reshape_colors = np.reshape(pcd_colors.T,(3,len(pcd_colors)))
+        las.__setattr__("red",reshape_colors[0]*256)
+        las.__setattr__("green",reshape_colors[1]*256)
+        las.__setattr__("blue",reshape_colors[2]*256)
+    print(las.points)
+    print(r_las.points)
+    las.write('C:/Users/hungt/Downloads/diagonal.las')
 
 def pylas_test():
     t_points = []
