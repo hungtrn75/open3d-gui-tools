@@ -31,26 +31,27 @@ def create():
     dpcd = pcd
     # dpcd = pcd.voxel_down_sample(voxel_size=0.05)
     pcd_points = np.asarray(dpcd.points)
-    print(pcd_points/10)
-    print(r_las.points)
-    pcd_colors = np.asarray(dpcd.colors)
-    reshape_colors = np.reshape(pcd_colors.T,(3,len(pcd_colors)))
+    print(r_las.header.offsets)
     las = pylas.create(point_format_id=r_las.point_format.id)
     las.header = r_las.header
+    scales =  r_las.header.scales
     reshape_points = np.reshape(pcd_points.T,(3,len(pcd_points)))
-    # las.header.scales = r_las.header.scales
-    # las.header.offsets = r_las.header.offsets
-    las.x = reshape_points[0]
-    las.y = reshape_points[1]
-    las.z = reshape_points[2]
-    
-    # las.__setattr__("red",reshape_colors[0])
-    # las.__setattr__("green",reshape_colors[1])
-    # las.__setattr__("blue",reshape_colors[2])
-    
-    # print(las.header.scales)
-    las.write('/Users/macbook/Downloads/diagonal.las')
-
+    print( reshape_points[0])
+    las.__setitem__('X',reshape_points[0]/scales[0])
+    las.__setitem__('Y',reshape_points[1]/scales[1])
+    las.__setitem__('Z',reshape_points[2]/scales[2])
+    # las.x = reshape_points[0]
+    # las.y = reshape_points[1]
+    # las.z = reshape_points[2]
+    if pcd.has_colors():
+        pcd_colors = np.asarray(dpcd.colors)
+        reshape_colors = np.reshape(pcd_colors.T,(3,len(pcd_colors)))
+        las.__setattr__("red",reshape_colors[0]*256)
+        las.__setattr__("green",reshape_colors[1]*256)
+        las.__setattr__("blue",reshape_colors[2]*256)
+    print(las.points)
+    print(r_las.points)
+    las.write('C:/Users/hungt/Downloads/diagonal.las')
 
 def pylas_test():
     t_points = []
@@ -101,5 +102,50 @@ def main():
     points_kept = inFile.points[keep_points]
     print(points_kept)
 
+def crop_geo():
+    c_pcd = o3d.io.read_point_cloud("C:/Users/hungt/Downloads/cropped_2.ply")
+    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/points.las")
+    pcd = cloud.to_instance("open3d", mesh=False)
+    pcd_points = np.asarray(pcd.points)
+    c_pcd_points = np.asarray(c_pcd.points)
+    print(list(pcd_points))
+    r_pcd = np.reshape(pcd_points.T,(3,len(pcd_points)))
+    r_c_pcd = np.reshape(c_pcd_points.T,(3,len(c_pcd_points)))
+    print((r_pcd[0]))
+    print(len(r_pcd[1]))
+    print(len(r_pcd[2]))
+    print((r_c_pcd[0]))
+    print(len(r_c_pcd[1]))
+    print(len(r_c_pcd[2]))
+    r_x_pcd = np.setdiff1d(r_pcd[0],r_c_pcd[0])
+    r_y_pcd = np.setdiff1d(r_pcd[1],r_c_pcd[1])
+    r_z_pcd = np.setdiff1d(r_pcd[2],r_c_pcd[2])
+    print(len(r_x_pcd))
+    print(len(r_y_pcd))
+    print(len(r_z_pcd))
+    # ,c_pcd.get_axis_aligned_bounding_box()
+    # rc_pcd = pcd.crop(c_pcd.get_oriented_bounding_box())
+    # o3d.visualization.draw_geometries([pcd])
+
+def crop_geo_2():
+    c_pcd = o3d.io.read_point_cloud("C:/Users/hungt/Downloads/cropped_1.ply")
+    cloud = PyntCloud.from_file("C:/Users/hungt/Downloads/points.las")
+    pcd = cloud.to_instance("open3d", mesh=False)
+    dists = pcd.compute_point_cloud_distance(c_pcd)
+    dists = np.asarray(dists)
+    ind = np.where(dists > 0.01)[0]
+    pcd_without_cropped = pcd.select_by_index(ind)
+    o3d.visualization.draw_geometries([pcd_without_cropped])
+
+
+def color():
+    # pcd = o3d.io.read_point_cloud("/Users/macbook/Desktop/python/open3d-gui-tools/rockyperla.ply")
+    # print(np.asarray(pcd.colors))
+    cloud = PyntCloud.from_file("/Users/macbook/Downloads/Test1.las")
+    t_pcd = cloud.to_instance("open3d", mesh=False)
+    r_colors = np.asarray(t_pcd.colors)
+    t_pcd.colors = o3d.utility.Vector3dVector(r_colors/255)
+    print(np.asarray(t_pcd.colors))
+
 if __name__ == "__main__":
-    create()
+    color()
