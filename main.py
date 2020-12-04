@@ -198,8 +198,11 @@ class AppWindow:
     MATERIAL_NAMES = ["Lit", "Unlit", "Normals", "Depth"]
     MATERIAL_SHADERS = [Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH]
     # Config values
+    _checkeds = [True, True, True, True]
     _geometry = None
     _d_geometry = None
+    _c_geometry = None
+    _s_geometry = None
     _downsampling = 0.0
     _path = None
     _infile = None
@@ -244,15 +247,47 @@ class AppWindow:
         # space for all its children when open, but only enough for text when
         # closed. This is useful for property pages, so the user can hide sets
         # of properties they rarely use.
-        db_ctrls = gui.CollapsableVert(
-            "DB Tree", 0.25 * em, gui.Margins(em, 0, 0, 0)
-        )
+        db_ctrls = gui.CollapsableVert("DB Tree", 0.25 * em, gui.Margins(em, 0, 0, 0))
 
-        _db_main_checkbox = gui.Checkbox("source.las")
-        _db_crop_checkbox = gui.Checkbox("cropped.las")
+        main_layout = gui.Horiz()
+        crop_layout = gui.Horiz()
+        downsample_layout = gui.Horiz()
+        sub_layout = gui.Horiz()
+        self._fileedit_2 = gui.Checkbox("source")
+        self._fileedit_3 = gui.Checkbox("cropped")
+        self._fileedit_4 = gui.Checkbox("downsample")
+        self._fileedit_5 = gui.Checkbox("sub")
+        self._fileedit_2.checked = True
+        self._fileedit_3.checked = True
+        self._fileedit_4.checked = True
+        self._fileedit_5.checked = True
 
-        _db_main_checkbox.set_on_checked(self._on_db_main_checked)
-        _db_crop_checkbox.set_on_checked(self._on_db_crop_checked)
+        self._fileedit_2.set_on_checked(self._on_db_main_checked)
+        self._fileedit_3.set_on_checked(self._on_db_crop_checked)
+        self._fileedit_4.set_on_checked(self._on_db_downsample_checked)
+        self._fileedit_5.set_on_checked(self._on_db_sub_checked)
+
+        self._fileedit_main = gui.Label("(NoData)")
+        
+        self._fileedit_crop = gui.Label("(NoData)")
+        self._fileedit_downsample = gui.Label("(NoData)")
+        self._fileedit_sub = gui.Label("(NoData)")
+
+        main_layout.add_child(self._fileedit_2)
+        main_layout.add_fixed(0.25 * em)
+        main_layout.add_child(self._fileedit_main)
+
+        downsample_layout.add_child(self._fileedit_4)
+        downsample_layout.add_fixed(0.25 * em)
+        downsample_layout.add_child(self._fileedit_downsample)
+
+        crop_layout.add_child(self._fileedit_3)
+        crop_layout.add_fixed(0.25 * em)
+        crop_layout.add_child(self._fileedit_crop)
+
+        sub_layout.add_child(self._fileedit_5)
+        sub_layout.add_fixed(0.25 * em)
+        sub_layout.add_child(self._fileedit_sub)
 
         self._fileedit = gui.TextEdit()
         filedlgbutton = gui.Button("...")
@@ -265,8 +300,10 @@ class AppWindow:
         fileedit_layout.add_fixed(0.25 * em)
         fileedit_layout.add_child(filedlgbutton)
 
-        db_ctrls.add_child(_db_main_checkbox)
-        db_ctrls.add_child(_db_crop_checkbox)
+        db_ctrls.add_child(main_layout)
+        db_ctrls.add_child(downsample_layout)
+        db_ctrls.add_child(crop_layout)
+        db_ctrls.add_child(sub_layout)
         db_ctrls.add_fixed(0.1 * em)
         db_ctrls.add_child(fileedit_layout)
 
@@ -275,9 +312,6 @@ class AppWindow:
         view_ctrls = gui.CollapsableVert(
             "View controls", 0.25 * em, gui.Margins(em, 0, 0, 0)
         )
-
-        
-        
 
         self._arcball_button = gui.Button("Arcball")
         self._arcball_button.horizontal_padding_em = 0.5
@@ -467,7 +501,7 @@ class AppWindow:
             file_menu.add_item("Export Current Image...", AppWindow.MENU_EXPORT)
             file_menu.add_item("Export to .las file", AppWindow.MENU_EXPORT_LAS)
             file_menu.add_separator()
-            file_menu.add_item("Close All", AppWindow.MENU_CLOSE_ALL)
+            file_menu.add_item("Clear all", AppWindow.MENU_CLOSE_ALL)
             if not isMacOS:
                 file_menu.add_separator()
                 file_menu.add_item("Quit", AppWindow.MENU_QUIT)
@@ -581,17 +615,36 @@ class AppWindow:
         # height = min(r.height,
         #              self._settings_panel.calc_preferred_size(theme).height)
         self._settings_panel.frame = gui.Rect(0, 0, width, r.height)
-    
-    def _on_db_main_checked(self, state ):
-        print(state)
 
-    def _on_db_crop_checked(self, state ):
-        print(self)
+    def _on_db_main_checked(self, state):
+        self._checkeds[0] = state
+        if self._geometry is not None:
+            self._scene.scene.show_geometry("__model__",state)
+            self._scene.scene.show_geometry("__m_bounds__",state)
         print(state)
+    
+    def _on_db_downsample_checked(self, state):
+        self._checkeds[1] = state
+        if self._d_geometry is not None:
+            self._scene.scene.show_geometry("__downsample__",state)
+            self._scene.scene.show_geometry("__d_bounds__",state)
+        print(state)
+    
+    def _on_db_sub_checked(self, state):
+        self._checkeds[3] = state
+        if self._s_geometry is not None:
+            self._scene.scene.show_geometry("__sub__",state)
+            self._scene.scene.show_geometry("__s_bounds__",state)
+
+    def _on_db_crop_checked(self, state):
+        self._checkeds[2] = state
+        if self._c_geometry is not None:
+            self._scene.scene.show_geometry("__cropped__",state)
+            self._scene.scene.show_geometry("__c_bounds__",state)
 
     def _on_filedlg_button(self):
         filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
-        filedlg.add_filter(".las", "LAS File(.las)")
+        filedlg.add_filter(".ply", "Poind Cloud(.ply)")
         filedlg.set_on_cancel(self._on_filedlg_cancel)
         filedlg.set_on_done(self._on_filedlg_done)
         self.window.show_dialog(filedlg)
@@ -600,7 +653,43 @@ class AppWindow:
         self.window.close_dialog()
 
     def _on_filedlg_done(self, path):
+        self._show_cropping_dialog()
         self._fileedit.text_value = path
+        pcd = None
+        if self._d_geometry is None:
+            pcd = self._geometry
+        else:
+            pcd = self._d_geometry
+
+        c_pcd = o3d.io.read_point_cloud(path)
+        dists = pcd.compute_point_cloud_distance(c_pcd)
+        dists = np.asarray(dists)
+        ind = np.where(dists > 0.01)[0]
+        pcd_without_cropped = pcd.select_by_index(ind)
+         # Add cropped geo to scene
+        self._scene.scene.add_geometry(
+            "__cropped__", c_pcd, self.settings.material
+        )
+        self._fileedit_sub.text = '({0} points)'.format(len(c_pcd.points))
+        c_bounds = c_pcd.get_axis_aligned_bounding_box()
+        c_bounds.color = (1, 0, 0)
+        self._scene.scene.add_geometry(
+            "__c_bounds__", c_bounds, self.settings.material
+        )
+        # Add sub geo to scene
+        self._scene.scene.add_geometry(
+            "__sub__", pcd_without_cropped, self.settings.material
+        )
+        self._fileedit_sub.text = '({0} points)'.format(len(pcd_without_cropped.points))
+        s_bounds = pcd_without_cropped.get_axis_aligned_bounding_box()
+        s_bounds.color = (1, 0, 0)
+        self._scene.scene.add_geometry(
+            "__s_bounds__", s_bounds, self.settings.material
+        )
+        self._c_geometry = c_pcd
+        self._fileedit_crop.text = "({0} points)".format(len(c_pcd.points))
+        self._s_geometry = pcd_without_cropped
+        self._fileedit_sub.text = "({0} points)".format(len(pcd_without_cropped.points))
         self.window.close_dialog()
 
     def _set_mouse_mode_rotate(self):
@@ -609,14 +698,14 @@ class AppWindow:
     def _set_mouse_mode_fly(self):
         self._scene.set_view_controls(gui.SceneWidget.Controls.FLY)
 
+    def _set_mouse_mode_model(self):
+        self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_MODEL)
+
     def _set_mouse_mode_sun(self):
         self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_SUN)
 
     def _set_mouse_mode_ibl(self):
         self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_IBL)
-
-    def _set_mouse_mode_model(self):
-        self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_MODEL)
 
     def _on_bg_color(self, new_color):
         self.settings.bg_color = new_color
@@ -698,9 +787,7 @@ class AppWindow:
             gui.FileDialog.OPEN, "Choose file to load", self.window.theme
         )
 
-        dlg.add_filter(".las", "Point cloud files (.las)")
         dlg.add_filter(".las", "LAS files (.las)")
-        dlg.add_filter("", "All files")
 
         # A file dialog MUST define on_cancel and on_done functions
         dlg.set_on_cancel(self._on_file_dialog_cancel)
@@ -712,35 +799,51 @@ class AppWindow:
 
     def _on_load_dialog_done(self, filename):
         self.window.close_dialog()
+        self._on_menu_close_all()
         self.load(filename)
 
     def _on_menu_close_all(self):
         self.window.title = "Open3D"
         self._scene.scene.clear_geometry()
+        self._fileedit_main.text = ""
+        self._fileedit_downsample.text = ""
+        self._fileedit_crop.text = ""
+        self._fileedit_sub.text = ""
         self._geometry = None
         self._d_geometry = None
+        self._c_geometry = None
+        self._s_geometry = None
+        self._checkeds = [True, True, True, True]
+        self._fileedit_2.checked = True
+        self._fileedit_3.checked = True
+        self._fileedit_4.checked = True
+        self._fileedit_5.checked = True
         self._infile = None
 
     def _on_menu_crop_geometry(self):
-        if self._geometry is not None and self._d_geometry is not None:
+        if self._geometry is not None or self._d_geometry is not None:
             c_geometry = None
-            if self._geometry is None:
-                c_geometry = self._d_geometry
-            else:
+            if self._d_geometry is None:
                 c_geometry = self._geometry
+            else:
+                c_geometry = self._d_geometry
 
             if c_geometry is not None:
-                o3d.visualization.draw_geometries_with_editing([pcd])
+                o3d.visualization.draw_geometries_with_editing([c_geometry],"CropWindowOpen3D")
 
     def _on_menu_export_las(self):
-        if self._geometry is not None or self._d_geometry is not None:
-            dlg = gui.FileDialog(
-                gui.FileDialog.SAVE, "Choose file to save", self.window.theme
-            )
-            dlg.add_filter(".las", "LAS files (.las)")
-            dlg.set_on_cancel(self._on_file_dialog_cancel)
-            dlg.set_on_done(self._on_export_las_dialog_done)
-            self.window.show_dialog(dlg)
+        len_true = np.sum(self._checkeds)
+        if len_true != 1:
+            self.window.show_message_box("Warning","Chỉ chọn một geometry để export!")
+        else:
+            if self._geometry is not None or self._d_geometry is not None or self._c_geometry is not None or self._s_geometry is not None:
+                dlg = gui.FileDialog(
+                    gui.FileDialog.SAVE, "Choose file to save", self.window.theme
+                )
+                dlg.add_filter(".las", "LAS files (.las)")
+                dlg.set_on_cancel(self._on_file_dialog_cancel)
+                dlg.set_on_done(self._on_export_las_dialog_done)
+                self.window.show_dialog(dlg)
 
     def _on_menu_export(self):
         dlg = gui.FileDialog(
@@ -754,26 +857,32 @@ class AppWindow:
     def _on_export_las_dialog_done(self, filename):
         self.window.close_dialog()
         e_geometry = None
-        if self._d_geometry is None:
+        if self._checkeds[0]:
             e_geometry = self._geometry
-        else:
+        elif self._checkeds[1]:
             e_geometry = self._d_geometry
+        elif self._checkeds[2]:
+            e_geometry = self._c_geometry
+        else:
+            e_geometry = self._s_geometry
+
 
         las = pylas.create(point_format_id=self._infile.point_format.id)
         las.header = self._infile.header
+        scales = self._infile.header.scales
         pcd_points = np.asarray(e_geometry.points)
         len_shape = len(pcd_points)
         reshape_points = np.reshape(pcd_points.T, (3, len_shape))
-        las.__setitem__('X',reshape_points[0]/scales[0])
-        las.__setitem__('Y',reshape_points[1]/scales[1])
-        las.__setitem__('Z',reshape_points[2]/scales[2])
+        las.__setitem__("X", reshape_points[0] / scales[0])
+        las.__setitem__("Y", reshape_points[1] / scales[1])
+        las.__setitem__("Z", reshape_points[2] / scales[2])
 
         if e_geometry.has_colors():
             pcd_colors = np.asarray(e_geometry.colors)
             reshape_colors = np.reshape(pcd_colors.T, (3, len_shape))
-            las.__setattr__("red", reshape_colors[0])
-            las.__setattr__("green", reshape_colors[1])
-            las.__setattr__("blue", reshape_colors[2])
+            las.__setattr__("red", reshape_colors[0] * 65536)
+            las.__setattr__("green", reshape_colors[1] * 65536)
+            las.__setattr__("blue", reshape_colors[2] * 65536)
 
         las.write(filename)
         self._on_export_las_success(filename)
@@ -842,17 +951,29 @@ class AppWindow:
         if self._geometry is not None:
             if self._downsampling == 0.0:
                 self._d_geometry = None
-                self._scene.scene.clear_geometry()
+                self._fileedit_downsample.text = ""
+                self._scene.scene.remove_geometry("__downsample__")
+                self._scene.scene.remove_geometry("__d_bounds__")
                 self._scene.scene.add_geometry(
                     "__model__", self._geometry, self.settings.material
                 )
             else:
-                self._scene.scene.clear_geometry()
+                self._scene.scene.remove_geometry("__downsample__")
+                
                 self._d_geometry = self._geometry.voxel_down_sample(
                     voxel_size=self._downsampling
                 )
+                bounds = self._d_geometry.get_axis_aligned_bounding_box()
+                bounds.color = (1, 0, 0)
+                oriented = self._d_geometry.get_oriented_bounding_box()
+                oriented.color = (0, 1, 0)
                 self._scene.scene.add_geometry(
-                    "__model__", self._d_geometry, self.settings.material
+                    "__d_bounds__", bounds, self.settings.material
+                )
+               
+                self._fileedit_downsample.text = "({0} points)".format(len(self._d_geometry.points))
+                self._scene.scene.add_geometry(
+                    "__downsample__", self._d_geometry, self.settings.material
                 )
 
     def _on_doubleedit_value_change(self, value):
@@ -898,19 +1019,15 @@ class AppWindow:
                 self._scene.scene.add_geometry(
                     "__model__", self._geometry, self.settings.material
                 )
+                self._fileedit_main.text = '({0} points)'.format(len(self._geometry.points))
                 bounds = self._geometry.get_axis_aligned_bounding_box()
-                print(bounds)
                 bounds.color = (1, 0, 0)
-                oriented = self._geometry.get_oriented_bounding_box()
-                oriented.color = (0, 1, 0)
                 self._scene.scene.add_geometry(
-                    "__bounds__", bounds, self.settings.material
+                    "__m_bounds__", bounds, self.settings.material
                 )
-                self._scene.scene.add_geometry(
-                    "__oriented__", oriented, self.settings.material
-                )
-                self._scene.setup_camera(60, bounds, bounds.get_center())
                 
+                self._scene.setup_camera(60, bounds, bounds.get_center())
+
                 print("Run on main done......")
 
             except Exception as e:
@@ -926,7 +1043,7 @@ class AppWindow:
                 cloud = pynt_cloud.to_instance("open3d", mesh=False)
                 if cloud.has_colors():
                     r_colors = np.asarray(cloud.colors)
-                    cloud.colors = o3d.utility.Vector3dVector(r_colors/255)
+                    cloud.colors = o3d.utility.Vector3dVector(r_colors / 255)
             except Exception:
                 pass
             if cloud is not None:
@@ -943,6 +1060,15 @@ class AppWindow:
                 self.window, self._load_gui_on_main_thread
             )
 
+    def _show_cropping_dialog(self):
+        em = self.window.theme.font_size
+        dlg = gui.Dialog("Processing data")
+        # Add the text
+        dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
+        dlg_layout.add_child(gui.Label("Cropping geometry..."))
+        dlg.add_child(dlg_layout)
+        self.window.show_dialog(dlg)
+
     def _show_processing_dialog(self):
         em = self.window.theme.font_size
         dlg = gui.Dialog("Processing data")
@@ -953,12 +1079,8 @@ class AppWindow:
         self.window.show_dialog(dlg)
 
     def load(self, path):
-        self._scene.scene.clear_geometry()
-        self._geometry = None
-        self._d_geometry = None
         self._path = path
         self.window.title = path
-        self._infile = None
         self._show_processing_dialog()
         gui.Application.instance.run_in_thread(self._load_gui_on_separate_thread)
 
