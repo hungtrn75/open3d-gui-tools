@@ -764,23 +764,16 @@ class AppWindow:
         pcd_points = np.asarray(e_geometry.points)
         len_shape = len(pcd_points)
         reshape_points = np.reshape(pcd_points.T, (3, len_shape))
-        las.__setattr__("x", reshape_points[0])
-        las.__setattr__("y", reshape_points[1])
-        las.__setattr__("z", reshape_points[2])
-        # las.x = reshape_points[0]
-        # las.y = reshape_points[1]
-        # las.z = reshape_points[2]
+        las.__setitem__('X',reshape_points[0]/scales[0])
+        las.__setitem__('Y',reshape_points[1]/scales[1])
+        las.__setitem__('Z',reshape_points[2]/scales[2])
+
         if e_geometry.has_colors():
             pcd_colors = np.asarray(e_geometry.colors)
             reshape_colors = np.reshape(pcd_colors.T, (3, len_shape))
             las.__setattr__("red", reshape_colors[0])
             las.__setattr__("green", reshape_colors[1])
             las.__setattr__("blue", reshape_colors[2])
-        # else:
-        #     white = np.full((1, len_shape), 65535)
-        #     las.__setattr__("red", white[0])
-        #     las.__setattr__("green", white[0])
-        #     las.__setattr__("blue", white[0])
 
         las.write(filename)
         self._on_export_las_success(filename)
@@ -931,6 +924,9 @@ class AppWindow:
                 pynt_cloud = PyntCloud.from_file(self._path)
                 self._infile = pylas.read(self._path)
                 cloud = pynt_cloud.to_instance("open3d", mesh=False)
+                if cloud.has_colors():
+                    r_colors = np.asarray(cloud.colors)
+                    cloud.colors = o3d.utility.Vector3dVector(r_colors/255)
             except Exception:
                 pass
             if cloud is not None:
