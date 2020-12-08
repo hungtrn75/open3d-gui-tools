@@ -162,9 +162,6 @@ class Settings:
         self._materials[Settings.NORMALS].shader = Settings.NORMALS
         self._materials[Settings.DEPTH].shader = Settings.DEPTH
 
-        # Conveniently, assigning from self._materials[...] assigns a reference,
-        # not a copy, so if we change the property of a material, then switch
-        # to another one, then come back, the old setting will still be there.
         self.material = self._materials[Settings.LIT]
 
     def set_material(self, name):
@@ -220,33 +217,13 @@ class AppWindow:
         self._scene.scene = rendering.Open3DScene(w.renderer)
         self._scene.set_on_sun_direction_changed(self._on_sun_dir)
 
-        # ---- Settings panel ----
-        # Rather than specifying sizes in pixels, which may vary in size based
-        # on the monitor, especially on macOS which has 220 dpi monitors, use
-        # the em-size. This way sizings will be proportional to the font size,
-        # which will create a more visually consistent size across platforms.
         em = w.theme.font_size
 
         separation_height = int(round(0.5 * em))
-
-        # Widgets are laid out in layouts: gui.Horiz, gui.Vert,
-        # gui.CollapsableVert, and gui.VGrid. By nesting the layouts we can
-        # achieve complex designs. Usually we use a vertical layout as the
-        # topmost widget, since widgets tend to be organized from top to bottom.
-        # Within that, we usually have a series of horizontal layouts for each
-        # row. All layouts take a spacing parameter, which is the spacing
-        # between items in the widget, and a margins parameter, which specifies
-        # the spacing of the left, top, right, bottom margins. (This acts like
-        # the 'padding' property in CSS.)
-
         self._settings_panel = gui.Vert(
             0, gui.Margins(0.25 * em, 0.25 * em, 0.25 * em, 0.25 * em)
         )
 
-        # Create a collapsable vertical widget, which takes up enough vertical
-        # space for all its children when open, but only enough for text when
-        # closed. This is useful for property pages, so the user can hide sets
-        # of properties they rarely use.
         db_ctrls = gui.CollapsableVert("DB Tree", 0.25 * em, gui.Margins(em, 0, 0, 0))
 
         main_layout = gui.Horiz()
@@ -268,7 +245,7 @@ class AppWindow:
         self._fileedit_5.set_on_checked(self._on_db_sub_checked)
 
         self._fileedit_main = gui.Label("(NoData)")
-        
+
         self._fileedit_crop = gui.Label("(NoData)")
         self._fileedit_downsample = gui.Label("(NoData)")
         self._fileedit_sub = gui.Label("(NoData)")
@@ -334,11 +311,7 @@ class AppWindow:
         self._ibl_button.vertical_padding_em = 0
         self._ibl_button.set_on_clicked(self._set_mouse_mode_ibl)
         view_ctrls.add_child(gui.Label("Mouse controls"))
-        # We want two rows of buttons, so make two horizontal layouts. We also
-        # want the buttons centered, which we can do be putting a stretch item
-        # as the first and last item. Stretch items take up as much space as
-        # possible, and since there are two, they will each take half the extra
-        # space, thus centering the buttons.
+
         h = gui.Horiz(0.25 * em)  # row 1
         h.add_stretch()
         h.add_child(self._arcball_button)
@@ -470,22 +443,11 @@ class AppWindow:
 
         self._settings_panel.add_fixed(separation_height)
         self._settings_panel.add_child(material_settings)
-        # ----
 
-        # Normally our user interface can be children of all one layout (usually
-        # a vertical layout), which is then the only child of the window. In our
-        # case we want the scene to take up all the space and the settings panel
-        # to go above it. We can do this custom layout by providing an on_layout
-        # callback. The on_layout callback should set the frame
-        # (position + size) of every child correctly. After the callback is
-        # done the window will layout the grandchildren.
         w.set_on_layout(self._on_layout)
         w.add_child(self._scene)
         w.add_child(self._settings_panel)
 
-        # ---- Menu ----
-        # The menu is global (because the macOS menu is global), so only create
-        # it once, no matter how many windows are created
         if gui.Application.instance.menubar is None:
             if isMacOS:
                 app_menu = gui.Menu()
@@ -513,24 +475,15 @@ class AppWindow:
 
             menu = gui.Menu()
             if isMacOS:
-                # macOS will name the first menu item for the running application
-                # (in our case, probably "Python"), regardless of what we call
-                # it. This is the application menu, and it is where the
-                # About..., Preferences..., and Quit menu items typically go.
                 menu.add_menu("Example", app_menu)
                 menu.add_menu("File", file_menu)
                 menu.add_menu("Settings", settings_menu)
-                # Don't include help menu unless it has something more than
-                # About...
             else:
                 menu.add_menu("File", file_menu)
                 menu.add_menu("Settings", settings_menu)
                 menu.add_menu("Help", help_menu)
             gui.Application.instance.menubar = menu
 
-        # The menubar is global, but we need to connect the menu items to the
-        # window, so that the window can call the appropriate function when the
-        # menu item is activated.
         w.set_on_menu_item_activated(AppWindow.MENU_OPEN, self._on_menu_open)
         w.set_on_menu_item_activated(
             AppWindow.MENU_DOWNSAMPLING, self._on_menu_downsampling
@@ -564,8 +517,6 @@ class AppWindow:
         self._scene.scene.show_axes(self.settings.show_axes)
         if self.settings.new_ibl_name is not None:
             self._scene.scene.scene.set_indirect_light(self.settings.new_ibl_name)
-            # Clear new_ibl_name, so we don't keep reloading this image every
-            # time the settings are applied.
             self.settings.new_ibl_name = None
         self._scene.scene.scene.enable_indirect_light(self.settings.use_ibl)
         self._scene.scene.scene.set_indirect_light_intensity(
@@ -605,42 +556,36 @@ class AppWindow:
         self._point_size.double_value = self.settings.material.point_size
 
     def _on_layout(self, theme):
-        # The on_layout callback should set the frame (position + size) of every
-        # child correctly. After the callback is done the window will layout
-        # the grandchildren.
         r = self.window.content_rect
-        width = 17 * theme.font_size
-        # self._scene.frame = r
+        width = 20 * theme.font_size
         self._scene.frame = gui.Rect(width, 0, r.width - width, r.height)
-        # height = min(r.height,
-        #              self._settings_panel.calc_preferred_size(theme).height)
         self._settings_panel.frame = gui.Rect(0, 0, width, r.height)
 
     def _on_db_main_checked(self, state):
         self._checkeds[0] = state
         if self._geometry is not None:
-            self._scene.scene.show_geometry("__model__",state)
-            self._scene.scene.show_geometry("__m_bounds__",state)
+            self._scene.scene.show_geometry("__model__", state)
+            self._scene.scene.show_geometry("__m_bounds__", state)
         print(state)
-    
+
     def _on_db_downsample_checked(self, state):
         self._checkeds[1] = state
         if self._d_geometry is not None:
-            self._scene.scene.show_geometry("__downsample__",state)
-            self._scene.scene.show_geometry("__d_bounds__",state)
+            self._scene.scene.show_geometry("__downsample__", state)
+            self._scene.scene.show_geometry("__d_bounds__", state)
         print(state)
-    
+
     def _on_db_sub_checked(self, state):
         self._checkeds[3] = state
         if self._s_geometry is not None:
-            self._scene.scene.show_geometry("__sub__",state)
-            self._scene.scene.show_geometry("__s_bounds__",state)
+            self._scene.scene.show_geometry("__sub__", state)
+            self._scene.scene.show_geometry("__s_bounds__", state)
 
     def _on_db_crop_checked(self, state):
         self._checkeds[2] = state
         if self._c_geometry is not None:
-            self._scene.scene.show_geometry("__cropped__",state)
-            self._scene.scene.show_geometry("__c_bounds__",state)
+            self._scene.scene.show_geometry("__cropped__", state)
+            self._scene.scene.show_geometry("__c_bounds__", state)
 
     def _on_filedlg_button(self):
         filedlg = gui.FileDialog(gui.FileDialog.OPEN, "Select file", self.window.theme)
@@ -653,45 +598,40 @@ class AppWindow:
         self.window.close_dialog()
 
     def _on_filedlg_done(self, path):
-        self._show_cropping_dialog()
         self._fileedit.text_value = path
         pcd = None
         if self._d_geometry is None:
             pcd = self._geometry
         else:
             pcd = self._d_geometry
+        if pcd is not None:
+            c_pcd = o3d.io.read_point_cloud(path)
+            dists = pcd.compute_point_cloud_distance(c_pcd)
+            dists = np.asarray(dists)
+            ind = np.where(dists > 0.01)[0]
+            pcd_without_cropped = pcd.select_by_index(ind)
+            # Add cropped geo to scene
+            self._scene.scene.add_geometry("__cropped__", c_pcd, self.settings.material)
+            self._fileedit_sub.text = "({0} points)".format(len(c_pcd.points))
+            c_bounds = c_pcd.get_axis_aligned_bounding_box()
+            c_bounds.color = (1, 0, 0)
+            self._scene.scene.add_geometry("__c_bounds__", c_bounds, self.settings.material)
+            # Add sub geo to scene
+            self._scene.scene.add_geometry(
+                "__sub__", pcd_without_cropped, self.settings.material
+            )
+            self._fileedit_sub.text = "({0} points)".format(len(pcd_without_cropped.points))
+            s_bounds = pcd_without_cropped.get_axis_aligned_bounding_box()
+            s_bounds.color = (1, 0, 0)
+            self._scene.scene.add_geometry("__s_bounds__", s_bounds, self.settings.material)
+            self._c_geometry = c_pcd
+            self._fileedit_crop.text = "({0} points)".format(len(c_pcd.points))
+            self._s_geometry = pcd_without_cropped
+            self._fileedit_sub.text = "({0} points)".format(len(pcd_without_cropped.points))
 
-        c_pcd = o3d.io.read_point_cloud(path)
-        dists = pcd.compute_point_cloud_distance(c_pcd)
-        dists = np.asarray(dists)
-        ind = np.where(dists > 0.01)[0]
-        pcd_without_cropped = pcd.select_by_index(ind)
-         # Add cropped geo to scene
-        self._scene.scene.add_geometry(
-            "__cropped__", c_pcd, self.settings.material
-        )
-        self._fileedit_sub.text = '({0} points)'.format(len(c_pcd.points))
-        c_bounds = c_pcd.get_axis_aligned_bounding_box()
-        c_bounds.color = (1, 0, 0)
-        self._scene.scene.add_geometry(
-            "__c_bounds__", c_bounds, self.settings.material
-        )
-        # Add sub geo to scene
-        self._scene.scene.add_geometry(
-            "__sub__", pcd_without_cropped, self.settings.material
-        )
-        self._fileedit_sub.text = '({0} points)'.format(len(pcd_without_cropped.points))
-        s_bounds = pcd_without_cropped.get_axis_aligned_bounding_box()
-        s_bounds.color = (1, 0, 0)
-        self._scene.scene.add_geometry(
-            "__s_bounds__", s_bounds, self.settings.material
-        )
-        self._c_geometry = c_pcd
-        self._fileedit_crop.text = "({0} points)".format(len(c_pcd.points))
-        self._s_geometry = pcd_without_cropped
-        self._fileedit_sub.text = "({0} points)".format(len(pcd_without_cropped.points))
         self.window.close_dialog()
 
+        
     def _set_mouse_mode_rotate(self):
         self._scene.set_view_controls(gui.SceneWidget.Controls.ROTATE_CAMERA)
 
@@ -789,7 +729,6 @@ class AppWindow:
 
         dlg.add_filter(".las", "LAS files (.las)")
 
-        # A file dialog MUST define on_cancel and on_done functions
         dlg.set_on_cancel(self._on_file_dialog_cancel)
         dlg.set_on_done(self._on_load_dialog_done)
         self.window.show_dialog(dlg)
@@ -829,14 +768,21 @@ class AppWindow:
                 c_geometry = self._d_geometry
 
             if c_geometry is not None:
-                o3d.visualization.draw_geometries_with_editing([c_geometry],"CropWindowOpen3D")
+                o3d.visualization.draw_geometries_with_editing(
+                    [c_geometry], "CropWindowOpen3D"
+                )
 
     def _on_menu_export_las(self):
         len_true = np.sum(self._checkeds)
         if len_true != 1:
-            self.window.show_message_box("Warning","Chỉ chọn một geometry để export!")
+            self.window.show_message_box("Warning", "Chi chon mot geometry de export!")
         else:
-            if self._geometry is not None or self._d_geometry is not None or self._c_geometry is not None or self._s_geometry is not None:
+            if (
+                self._geometry is not None
+                or self._d_geometry is not None
+                or self._c_geometry is not None
+                or self._s_geometry is not None
+            ):
                 dlg = gui.FileDialog(
                     gui.FileDialog.SAVE, "Choose file to save", self.window.theme
                 )
@@ -865,7 +811,6 @@ class AppWindow:
             e_geometry = self._c_geometry
         else:
             e_geometry = self._s_geometry
-
 
         las = pylas.create(point_format_id=self._infile.point_format.id)
         las.header = self._infile.header
@@ -959,7 +904,7 @@ class AppWindow:
                 )
             else:
                 self._scene.scene.remove_geometry("__downsample__")
-                
+
                 self._d_geometry = self._geometry.voxel_down_sample(
                     voxel_size=self._downsampling
                 )
@@ -970,8 +915,10 @@ class AppWindow:
                 self._scene.scene.add_geometry(
                     "__d_bounds__", bounds, self.settings.material
                 )
-               
-                self._fileedit_downsample.text = "({0} points)".format(len(self._d_geometry.points))
+
+                self._fileedit_downsample.text = "({0} points)".format(
+                    len(self._d_geometry.points)
+                )
                 self._scene.scene.add_geometry(
                     "__downsample__", self._d_geometry, self.settings.material
                 )
@@ -981,25 +928,15 @@ class AppWindow:
         self._downsampling = value
 
     def _on_menu_about(self):
-        # Show a simple dialog. Although the Dialog is actually a widget, you can
-        # treat it similar to a Window for layout and put all the widgets in a
-        # layout which you make the only child of the Dialog.
         em = self.window.theme.font_size
         dlg = gui.Dialog("About")
 
-        # Add the text
         dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
         dlg_layout.add_child(gui.Label("Open3D GUI Example"))
 
-        # Add the Ok button. We need to define a callback function to handle
-        # the click.
         ok = gui.Button("OK")
         ok.set_on_clicked(self._on_about_ok)
 
-        # We want the Ok button to be an the right side, so we need to add
-        # a stretch item to the layout, otherwise the button will be the size
-        # of the entire row. A stretch item takes up as much space as it can,
-        # which forces the button to be its minimum size.
         h = gui.Horiz()
         h.add_stretch()
         h.add_child(ok)
@@ -1019,13 +956,15 @@ class AppWindow:
                 self._scene.scene.add_geometry(
                     "__model__", self._geometry, self.settings.material
                 )
-                self._fileedit_main.text = '({0} points)'.format(len(self._geometry.points))
+                self._fileedit_main.text = "({0} points)".format(
+                    len(self._geometry.points)
+                )
                 bounds = self._geometry.get_axis_aligned_bounding_box()
                 bounds.color = (1, 0, 0)
                 self._scene.scene.add_geometry(
                     "__m_bounds__", bounds, self.settings.material
                 )
-                
+
                 self._scene.setup_camera(60, bounds, bounds.get_center())
 
                 print("Run on main done......")
@@ -1063,7 +1002,6 @@ class AppWindow:
     def _show_cropping_dialog(self):
         em = self.window.theme.font_size
         dlg = gui.Dialog("Processing data")
-        # Add the text
         dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
         dlg_layout.add_child(gui.Label("Cropping geometry..."))
         dlg.add_child(dlg_layout)
@@ -1072,7 +1010,6 @@ class AppWindow:
     def _show_processing_dialog(self):
         em = self.window.theme.font_size
         dlg = gui.Dialog("Processing data")
-        # Add the text
         dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
         dlg_layout.add_child(gui.Label("normalize the normals of point cloud"))
         dlg.add_child(dlg_layout)
@@ -1101,7 +1038,7 @@ def main():
     # for rendering and prepares the cross-platform window abstraction.
     gui.Application.instance.initialize()
 
-    w = AppWindow(1024, 768)
+    w = AppWindow(1920, 1080)
 
     if len(sys.argv) > 1:
         path = sys.argv[1]
