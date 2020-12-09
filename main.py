@@ -8,9 +8,6 @@ import os
 import platform
 import sys
 from pyntcloud import PyntCloud
-import pandas
-import laspy
-from laspy.file import File
 import pylas
 
 isMacOS = platform.system() == "Darwin"
