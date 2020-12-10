@@ -204,9 +204,10 @@ class AppWindow:
     def __init__(self, width, height):
         self.settings = Settings()
         resource_path = gui.Application.instance.resource_path
+        # print(resource_path)
         self.settings.new_ibl_name = resource_path + "/" + AppWindow.DEFAULT_IBL
 
-        self.window = gui.Application.instance.create_window("Open3D", width, height)
+        self.window = gui.Application.instance.create_window("Point Cloud", width, height)
         w = self.window  # to make the code more concise
 
         # 3D widget
@@ -555,8 +556,12 @@ class AppWindow:
     def _on_layout(self, theme):
         r = self.window.content_rect
         width = 20 * theme.font_size
-        self._scene.frame = gui.Rect(width, 0, r.width - width, r.height)
-        self._settings_panel.frame = gui.Rect(0, 0, width, r.height)
+        if isMacOS:
+            self._scene.frame = gui.Rect(width, 0, r.width - width, r.height)
+            self._settings_panel.frame = gui.Rect(0, 0, width, r.height)
+        else:
+            self._scene.frame = gui.Rect(width, 25, r.width - width, r.height)
+            self._settings_panel.frame = gui.Rect(0, 25, width, r.height)
 
     def _on_db_main_checked(self, state):
         self._checkeds[0] = state
@@ -739,7 +744,7 @@ class AppWindow:
         self.load(filename)
 
     def _on_menu_close_all(self):
-        self.window.title = "Open3D"
+        self.window.title = "Point Cloud"
         self._scene.scene.clear_geometry()
         self._fileedit_main.text = ""
         self._fileedit_downsample.text = ""
@@ -766,7 +771,7 @@ class AppWindow:
 
             if c_geometry is not None:
                 o3d.visualization.draw_geometries_with_editing(
-                    [c_geometry], "CropWindowOpen3D"
+                    [c_geometry], "Crop Geometry"
                 )
 
     def _on_menu_export_las(self):
@@ -929,7 +934,7 @@ class AppWindow:
         dlg = gui.Dialog("About")
 
         dlg_layout = gui.Vert(em, gui.Margins(em, em, em, em))
-        dlg_layout.add_child(gui.Label("Open3D GUI Example"))
+        dlg_layout.add_child(gui.Label("Point Cloud GUI"))
 
         ok = gui.Button("OK")
         ok.set_on_clicked(self._on_about_ok)
@@ -1035,7 +1040,7 @@ def main():
     # for rendering and prepares the cross-platform window abstraction.
     gui.Application.instance.initialize()
 
-    w = AppWindow(1920, 1080)
+    w = AppWindow(1600, 900)
 
     if len(sys.argv) > 1:
         path = sys.argv[1]
