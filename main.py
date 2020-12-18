@@ -9,6 +9,7 @@ import platform
 import sys
 from pyntcloud import PyntCloud
 import pylas
+import subprocess
 
 isMacOS = platform.system() == "Darwin"
 
@@ -269,18 +270,12 @@ class AppWindow:
         filedlgbutton.horizontal_padding_em = 0.5
         filedlgbutton.vertical_padding_em = 0
         filedlgbutton.set_on_clicked(self._on_filedlg_button)
-        fileedit_layout = gui.Horiz()
-        fileedit_layout.add_child(gui.Label("Choose crop file"))
-        fileedit_layout.add_child(self._fileedit)
-        fileedit_layout.add_fixed(0.25 * em)
-        fileedit_layout.add_child(filedlgbutton)
 
         db_ctrls.add_child(main_layout)
         db_ctrls.add_child(downsample_layout)
         db_ctrls.add_child(crop_layout)
         db_ctrls.add_child(sub_layout)
         db_ctrls.add_fixed(0.1 * em)
-        db_ctrls.add_child(fileedit_layout)
 
         self._settings_panel.add_child(db_ctrls)
 
@@ -505,30 +500,28 @@ class AppWindow:
 
     def _apply_settings(self):
         bg_color = [
-            self.settings.bg_color.red,
-            self.settings.bg_color.green,
-            self.settings.bg_color.blue,
-            self.settings.bg_color.alpha,
+            self.settings.bg_color.red, self.settings.bg_color.green,
+            self.settings.bg_color.blue, self.settings.bg_color.alpha
         ]
-        self._scene.scene.set_background_color(bg_color)
+        self._scene.scene.set_background(bg_color)
         self._scene.scene.show_skybox(self.settings.show_skybox)
         self._scene.scene.show_axes(self.settings.show_axes)
         if self.settings.new_ibl_name is not None:
-            self._scene.scene.scene.set_indirect_light(self.settings.new_ibl_name)
+            self._scene.scene.scene.set_indirect_light(
+                self.settings.new_ibl_name)
+            # Clear new_ibl_name, so we don't keep reloading this image every
+            # time the settings are applied.
             self.settings.new_ibl_name = None
         self._scene.scene.scene.enable_indirect_light(self.settings.use_ibl)
         self._scene.scene.scene.set_indirect_light_intensity(
-            self.settings.ibl_intensity
-        )
+            self.settings.ibl_intensity)
         sun_color = [
-            self.settings.sun_color.red,
-            self.settings.sun_color.green,
-            self.settings.sun_color.blue,
+            self.settings.sun_color.red, self.settings.sun_color.green,
+            self.settings.sun_color.blue
         ]
-        self._scene.scene.scene.set_directional_light(
-            self.settings.sun_dir, sun_color, self.settings.sun_intensity
-        )
-        self._scene.scene.scene.enable_directional_light(self.settings.use_sun)
+        self._scene.scene.scene.set_sun_light(self.settings.sun_dir, sun_color,
+                                              self.settings.sun_intensity)
+        self._scene.scene.scene.enable_sun_light(self.settings.use_sun)
 
         if self.settings.apply_material:
             self._scene.scene.update_material(self.settings.material)
@@ -543,13 +536,12 @@ class AppWindow:
         self._sun_intensity.int_value = self.settings.sun_intensity
         self._sun_dir.vector_value = self.settings.sun_dir
         self._sun_color.color_value = self.settings.sun_color
-        self._material_prefab.enabled = self.settings.material.shader == Settings.LIT
-        c = gui.Color(
-            self.settings.material.base_color[0],
-            self.settings.material.base_color[1],
-            self.settings.material.base_color[2],
-            self.settings.material.base_color[3],
-        )
+        self._material_prefab.enabled = (
+            self.settings.material.shader == Settings.LIT)
+        c = gui.Color(self.settings.material.base_color[0],
+                      self.settings.material.base_color[1],
+                      self.settings.material.base_color[2],
+                      self.settings.material.base_color[3])
         self._material_color.color_value = c
         self._point_size.double_value = self.settings.material.point_size
 
@@ -600,7 +592,6 @@ class AppWindow:
         self.window.close_dialog()
 
     def _on_filedlg_done(self, path):
-        self._fileedit.text_value = path
         pcd = None
         if self._d_geometry is None:
             pcd = self._geometry
@@ -761,6 +752,7 @@ class AppWindow:
         self._fileedit_5.checked = True
         self._infile = None
 
+
     def _on_menu_crop_geometry(self):
         if self._geometry is not None or self._d_geometry is not None:
             c_geometry = None
@@ -770,9 +762,16 @@ class AppWindow:
                 c_geometry = self._d_geometry
 
             if c_geometry is not None:
-                o3d.visualization.draw_geometries_with_editing(
-                    [c_geometry], "Crop Geometry"
-                )
+
+                # t1 = threading.Thread(target=motvong, args=(c_geometry,))
+                # t1.start()
+                # t1.join()
+                print(c_geometry)
+                tmp = r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\tmp\tmp.pcd"
+                o3d.io.write_point_cloud(tmp, c_geometry)
+                list1=["python",r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\crop_geometry.py"]
+                tmp = subprocess.call(list1)
+                self._on_filedlg_done(r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\tmp\c_geo.pcd")
 
     def _on_menu_export_las(self):
         len_true = np.sum(self._checkeds)
@@ -980,8 +979,8 @@ class AppWindow:
             cloud = None
             try:
                 pynt_cloud = PyntCloud.from_file(self._path)
-                self._infile = pylas.read(self._path)
                 cloud = pynt_cloud.to_instance("open3d", mesh=False)
+                self._infile = pylas.read(self._path)
                 if cloud.has_colors():
                     r_colors = np.asarray(cloud.colors)
                     cloud.colors = o3d.utility.Vector3dVector(r_colors / 255)
@@ -993,7 +992,7 @@ class AppWindow:
                     cloud.estimate_normals()
                 cloud.normalize_normals()
                 self._geometry = cloud
-                print(np.asarray(cloud.colors))
+                geo = cloud
             else:
                 print("[WARNING] Failed to read points", self.path)
             print("Run on separate done......")
@@ -1042,14 +1041,6 @@ def main():
 
     w = AppWindow(1600, 900)
 
-    if len(sys.argv) > 1:
-        path = sys.argv[1]
-        if os.path.exists(path):
-            w.load(path)
-        else:
-            w.window.show_message_box("Error", "Could not open file '" + path + "'")
-
-    # Run the event loop. This will not return until the last window is closed.
     gui.Application.instance.run()
 
 
