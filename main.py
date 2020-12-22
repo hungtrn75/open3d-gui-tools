@@ -772,11 +772,6 @@ class AppWindow:
                 c_geometry = self._d_geometry
 
             if c_geometry is not None:
-
-                # t1 = threading.Thread(target=motvong, args=(c_geometry,))
-                # t1.start()
-                # t1.join()
-                print(c_geometry)
                 tmp = r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\tmp\tmp.pcd"
                 o3d.io.write_point_cloud(tmp, c_geometry)
                 list1=["python",r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\crop_geometry.py"]
