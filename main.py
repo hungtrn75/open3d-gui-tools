@@ -187,6 +187,7 @@ class AppWindow:
     MENU_ABOUT = 21
     MENU_CLOSE_ALL = 6
     MENU_CROP_GEOMETRY = 7
+    CSF_FILTER = 8
 
     DEFAULT_IBL = "default"
 
@@ -201,6 +202,10 @@ class AppWindow:
     _downsampling = 0.0
     _path = None
     _infile = None
+    _slope_processing = False
+    _cloth_resolution = 2.0
+    _max_interations = 500
+    _classification_threshold = 0.5
 
     def __init__(self, width, height):
         self.settings = Settings()
@@ -453,6 +458,8 @@ class AppWindow:
             file_menu.add_item("Downsamle PointCloud", AppWindow.MENU_DOWNSAMPLING)
             file_menu.add_item("Crop Geometry", AppWindow.MENU_CROP_GEOMETRY)
             file_menu.add_separator()
+            file_menu.add_item("CSF Filter", AppWindow.CSF_FILTER)
+            file_menu.add_separator()
             file_menu.add_item("Export Current Image...", AppWindow.MENU_EXPORT)
             file_menu.add_item("Export to .las file", AppWindow.MENU_EXPORT_LAS)
             file_menu.add_separator()
@@ -484,6 +491,9 @@ class AppWindow:
         w.set_on_menu_item_activated(AppWindow.MENU_EXPORT, self._on_menu_export)
         w.set_on_menu_item_activated(
             AppWindow.MENU_EXPORT_LAS, self._on_menu_export_las
+        )
+        w.set_on_menu_item_activated(
+            AppWindow.CSF_FILTER, self._on_menu_csf_filter
         )
         w.set_on_menu_item_activated(AppWindow.MENU_QUIT, self._on_menu_quit)
         w.set_on_menu_item_activated(AppWindow.MENU_CLOSE_ALL, self._on_menu_close_all)
@@ -857,6 +867,66 @@ class AppWindow:
         gui.Application.instance.menubar.set_checked(
             AppWindow.MENU_SHOW_SETTINGS, self._settings_panel.visible
         )
+
+    def _on_menu_csf_filter(self):
+        em = self.window.theme.font_size
+        dlg = gui.Dialog("Cloth Simulation Filter")
+        dlg_layout = gui.Vert(em, gui.Margins(2*em, em, 2*em, em))
+        dlg_layout.add_child(gui.Label("Cloth Simulation Filter"))
+        # _slope_processing = False
+        # _cloth_resolution = 2.0
+        # _max_interations = 500
+        # _classification_threshold = 0.5
+        # 
+        slope_cb = gui.Checkbox("Slope processing")
+        slope_cb.set_checked(self._slope_processing)
+        dlg_layout.add_child(slope_cb)
+        # 
+        dlg_layout.add_child(gui.Label("Cloth resolution"))
+        cloth_resolution_ed = gui.NumberEdit(gui.NumberEdit.DOUBLE)
+        cloth_resolution_ed.set_limits(0.0, 999.0)
+        cloth_resolution_ed.set_value(self._cloth_resolution)
+        cloth_resolution_ed.set_on_value_changed(self._on_cloth_resolution_change)
+        dlg_layout.add_child(cloth_resolution_ed)
+        # 
+        dlg_layout.add_child(gui.Label("Max interations"))
+        max_interations_ed = gui.NumberEdit(gui.NumberEdit.INT)
+        max_interations_ed.set_limits(0, 999)
+        max_interations_ed.set_value(self._max_interations)
+        max_interations_ed.set_on_value_changed(self._on_max_interations_change)
+        dlg_layout.add_child(max_interations_ed)
+        # 
+        dlg_layout.add_child(gui.Label("Classification threshold"))
+        classification_threshold_ed = gui.NumberEdit(gui.NumberEdit.DOUBLE)
+        classification_threshold_ed.set_limits(0, 999)
+        classification_threshold_ed.set_value(self._classification_threshold)
+        classification_threshold_ed.set_on_value_changed(self._on_classification_threshold_change)
+        dlg_layout.add_child(classification_threshold_ed)
+        # 
+        ok = gui.Button("OK")
+        ok.set_on_clicked(self._on_aply_csf)
+        cancel = gui.Button("Cancel")
+        cancel.set_on_clicked(self._on_cancel_downsamling)
+        h2 = gui.Horiz()
+        h2.add_stretch()
+        h2.add_child(cancel)
+        h2.add_fixed(em)
+        h2.add_child(ok)
+        dlg_layout.add_child(h2)
+        dlg.add_child(dlg_layout)
+        self.window.show_dialog(dlg)
+
+    def _on_cloth_resolution_change(self, value):
+        self._cloth_resolution = value
+
+    def _on_max_interations_change(self, value):
+        self._max_interations = value
+
+    def _on_classification_threshold_change(self, value):
+        self._classification_threshold = value
+
+    def _on_aply_csf(self):
+        self.window.close_dialog()
 
     def _on_menu_downsampling(self):
         em = self.window.theme.font_size
