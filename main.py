@@ -10,6 +10,8 @@ import sys
 from pyntcloud import PyntCloud
 import pylas
 import subprocess
+import pathlib
+import CSF
 
 isMacOS = platform.system() == "Darwin"
 
@@ -194,11 +196,13 @@ class AppWindow:
     MATERIAL_NAMES = ["Lit", "Unlit", "Normals", "Depth"]
     MATERIAL_SHADERS = [Settings.LIT, Settings.UNLIT, Settings.NORMALS, Settings.DEPTH]
     # Config values
-    _checkeds = [True, True, True, True]
+    _checkeds = [True, True, True, True, True, True]
     _geometry = None
     _d_geometry = None
     _c_geometry = None
     _s_geometry = None
+    _g_geometry = None
+    _ng_geometry = None
     _downsampling = 0.0
     _path = None
     _infile = None
@@ -206,6 +210,10 @@ class AppWindow:
     _cloth_resolution = 2.0
     _max_interations = 500
     _classification_threshold = 0.5
+    _rigidness = np.array([True, False, False])
+    steep_cb = None
+    relief_cb = None
+    flat_cb = None
 
     def __init__(self, width, height):
         self.settings = Settings()
@@ -234,25 +242,35 @@ class AppWindow:
         crop_layout = gui.Horiz()
         downsample_layout = gui.Horiz()
         sub_layout = gui.Horiz()
+        ground_layout = gui.Horiz()
+        non_ground_layout = gui.Horiz()
         self._fileedit_2 = gui.Checkbox("source")
         self._fileedit_3 = gui.Checkbox("cropped")
         self._fileedit_4 = gui.Checkbox("downsample")
         self._fileedit_5 = gui.Checkbox("sub")
+        self._fileedit_6 = gui.Checkbox("ground")
+        self._fileedit_7 = gui.Checkbox("non-ground")
         self._fileedit_2.checked = True
         self._fileedit_3.checked = True
         self._fileedit_4.checked = True
         self._fileedit_5.checked = True
+        self._fileedit_6.checked = True
+        self._fileedit_7.checked = True
 
         self._fileedit_2.set_on_checked(self._on_db_main_checked)
         self._fileedit_3.set_on_checked(self._on_db_crop_checked)
         self._fileedit_4.set_on_checked(self._on_db_downsample_checked)
         self._fileedit_5.set_on_checked(self._on_db_sub_checked)
+        self._fileedit_6.set_on_checked(self._on_db_ground_checked)
+        self._fileedit_7.set_on_checked(self._on_db_non_ground_checked)
 
         self._fileedit_main = gui.Label("(NoData)")
 
         self._fileedit_crop = gui.Label("(NoData)")
         self._fileedit_downsample = gui.Label("(NoData)")
         self._fileedit_sub = gui.Label("(NoData)")
+        self._fileedit_ground = gui.Label("(NoData)")
+        self._fileedit_non_ground = gui.Label("(NoData)")
 
         main_layout.add_child(self._fileedit_2)
         main_layout.add_fixed(0.25 * em)
@@ -270,6 +288,14 @@ class AppWindow:
         sub_layout.add_fixed(0.25 * em)
         sub_layout.add_child(self._fileedit_sub)
 
+        ground_layout.add_child(self._fileedit_6)
+        ground_layout.add_fixed(0.25 * em)
+        ground_layout.add_child(self._fileedit_ground)
+
+        non_ground_layout.add_child(self._fileedit_7)
+        non_ground_layout.add_fixed(0.25 * em)
+        non_ground_layout.add_child(self._fileedit_non_ground)
+
         self._fileedit = gui.TextEdit()
         filedlgbutton = gui.Button("...")
         filedlgbutton.horizontal_padding_em = 0.5
@@ -280,6 +306,8 @@ class AppWindow:
         db_ctrls.add_child(downsample_layout)
         db_ctrls.add_child(crop_layout)
         db_ctrls.add_child(sub_layout)
+        db_ctrls.add_child(ground_layout)
+        db_ctrls.add_child(non_ground_layout)
         db_ctrls.add_fixed(0.1 * em)
 
         self._settings_panel.add_child(db_ctrls)
@@ -585,6 +613,20 @@ class AppWindow:
             self._scene.scene.show_geometry("__sub__", state)
             self._scene.scene.show_geometry("__s_bounds__", state)
 
+    def _on_db_ground_checked(self, state):
+        print('asdjkasi')
+        self._checkeds[4] = state
+        if self._g_geometry is not None:
+            self._scene.scene.show_geometry("__ground__", state)
+            self._scene.scene.show_geometry("__g_bounds__", state)
+
+    def _on_db_non_ground_checked(self, state):
+        print('asdjkasi')
+        self._checkeds[5] = state
+        if self._ng_geometry is not None:
+            self._scene.scene.show_geometry("__non_ground__", state)
+            self._scene.scene.show_geometry("__ng_bounds__", state)
+
     def _on_db_crop_checked(self, state):
         self._checkeds[2] = state
         if self._c_geometry is not None:
@@ -751,15 +793,21 @@ class AppWindow:
         self._fileedit_downsample.text = ""
         self._fileedit_crop.text = ""
         self._fileedit_sub.text = ""
+        self._fileedit_ground.text = ""
+        self._fileedit_non_ground.text = ""
         self._geometry = None
         self._d_geometry = None
         self._c_geometry = None
         self._s_geometry = None
-        self._checkeds = [True, True, True, True]
+        self._g_geometry = None
+        self._ng_geometry = None
+        self._checkeds = [True, True, True, True, True, True]
         self._fileedit_2.checked = True
         self._fileedit_3.checked = True
         self._fileedit_4.checked = True
         self._fileedit_5.checked = True
+        self._fileedit_6.checked = True
+        self._fileedit_7.checked = True
         self._infile = None
 
 
@@ -772,11 +820,14 @@ class AppWindow:
                 c_geometry = self._d_geometry
 
             if c_geometry is not None:
-                tmp = r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\tmp\tmp.pcd"
+                dir_path = pathlib.Path().absolute()
+                tmp = os.path.join(dir_path,"tmp.pcd") 
+                s_tmp = os.path.join(dir_path,"crop_geometry.py") 
                 o3d.io.write_point_cloud(tmp, c_geometry)
-                list1=["python",r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\crop_geometry.py"]
+                list1=["python", s_tmp]
                 tmp = subprocess.call(list1)
-                self._on_filedlg_done(r"C:\Users\SkyMap\Desktop\open3d\open3d-gui-tools-main\tmp\c_geo.pcd")
+                save_path = os.path.join(dir_path,"c_geo.pcd") 
+                self._on_filedlg_done(save_path)
 
     def _on_menu_export_las(self):
         len_true = np.sum(self._checkeds)
@@ -863,50 +914,90 @@ class AppWindow:
             AppWindow.MENU_SHOW_SETTINGS, self._settings_panel.visible
         )
 
+    def _on_steep_cb(self,value):
+        self._rigidness = np.array([True, False, False])
+        self.steep_cb.checked = True
+        self.relief_cb.checked = False
+        self.flat_cb.checked = False
+
+    def _on_relief_cb(self,value):
+        self._rigidness = np.array([False, True, False])
+        self.steep_cb.checked = False
+        self.relief_cb.checked = True
+        self.flat_cb.checked = False
+
+    def _on_flat_cb(self,value):
+        self._rigidness = np.array([False, False, True])
+        self.steep_cb.checked = False
+        self.relief_cb.checked = False
+        self.flat_cb.checked = True
+
     def _on_menu_csf_filter(self):
         em = self.window.theme.font_size
         dlg = gui.Dialog("Cloth Simulation Filter")
-        dlg_layout = gui.Vert(em, gui.Margins(2*em, em, 2*em, em))
+        dlg_layout = gui.Vert(em/2, gui.Margins(em, em, em, em))
         dlg_layout.add_child(gui.Label("Cloth Simulation Filter"))
-        # _slope_processing = False
-        # _cloth_resolution = 2.0
-        # _max_interations = 500
-        # _classification_threshold = 0.5
+
+        tabs = gui.TabControl()
+        tab1 = gui.Vert(em, gui.Margins(2*em, em, 8*em, em))
+        tab2 = gui.Vert(em, gui.Margins(2*em, em, 8*em, em))
+
+        
+        h3 = gui.Horiz()
+        h4 = gui.Horiz()
+        h5 = gui.Horiz()
+        self.steep_cb = gui.Checkbox("Steep slope")
+        self.steep_cb.checked = True
+        self.steep_cb.set_on_checked(self._on_steep_cb)
+        h3.add_child(self.steep_cb)
+        self.relief_cb = gui.Checkbox("Relief")
+        self.relief_cb.set_on_checked(self._on_relief_cb)
+        h4.add_child(self.relief_cb)
+        self.flat_cb = gui.Checkbox("Flat")
+        self.flat_cb.set_on_checked(self._on_flat_cb)
+        h5.add_child(self.flat_cb)
+        tab1.add_child(h3)
+        tab1.add_child(h4)
+        tab1.add_child(h5)
         # 
         slope_cb = gui.Checkbox("Slope processing")
-        slope_cb.set_checked(self._slope_processing)
-        dlg_layout.add_child(slope_cb)
+        slope_cb.checked = self._slope_processing
+        tab1.add_child(slope_cb)
         # 
-        dlg_layout.add_child(gui.Label("Cloth resolution"))
+        tab2.add_child(gui.Label("Cloth resolution"))
         cloth_resolution_ed = gui.NumberEdit(gui.NumberEdit.DOUBLE)
         cloth_resolution_ed.set_limits(0.0, 999.0)
         cloth_resolution_ed.set_value(self._cloth_resolution)
         cloth_resolution_ed.set_on_value_changed(self._on_cloth_resolution_change)
-        dlg_layout.add_child(cloth_resolution_ed)
+        tab2.add_child(cloth_resolution_ed)
         # 
-        dlg_layout.add_child(gui.Label("Max interations"))
+        tab2.add_child(gui.Label("Max interations"))
         max_interations_ed = gui.NumberEdit(gui.NumberEdit.INT)
         max_interations_ed.set_limits(0, 999)
         max_interations_ed.set_value(self._max_interations)
         max_interations_ed.set_on_value_changed(self._on_max_interations_change)
-        dlg_layout.add_child(max_interations_ed)
+        tab2.add_child(max_interations_ed)
         # 
-        dlg_layout.add_child(gui.Label("Classification threshold"))
+        tab2.add_child(gui.Label("Classification threshold"))
         classification_threshold_ed = gui.NumberEdit(gui.NumberEdit.DOUBLE)
         classification_threshold_ed.set_limits(0, 999)
         classification_threshold_ed.set_value(self._classification_threshold)
         classification_threshold_ed.set_on_value_changed(self._on_classification_threshold_change)
-        dlg_layout.add_child(classification_threshold_ed)
+        tab2.add_child(classification_threshold_ed)
         # 
         ok = gui.Button("OK")
         ok.set_on_clicked(self._on_aply_csf)
         cancel = gui.Button("Cancel")
         cancel.set_on_clicked(self._on_cancel_downsamling)
         h2 = gui.Horiz()
-        h2.add_stretch()
         h2.add_child(cancel)
         h2.add_fixed(em)
         h2.add_child(ok)
+        
+        tabs.add_tab("General parameter setting", tab1)
+        tabs.add_tab("Advanced parameter setting", tab2)
+        
+        dlg_layout.add_child(tabs)
         dlg_layout.add_child(h2)
         dlg.add_child(dlg_layout)
         self.window.show_dialog(dlg)
@@ -922,6 +1013,56 @@ class AppWindow:
 
     def _on_aply_csf(self):
         self.window.close_dialog()
+        e_geometry = None
+        if self._checkeds[0]:
+            e_geometry = self._geometry
+        elif self._checkeds[1]:
+            e_geometry = self._d_geometry
+        elif self._checkeds[2]:
+            e_geometry = self._c_geometry
+        else:
+            e_geometry = self._s_geometry
+        if e_geometry is not None:
+            csf = CSF.CSF()
+            # prameter settings
+            csf.params.bSloopSmooth = self._slope_processing
+            csf.params.cloth_resolution = self._cloth_resolution
+            csf.params.rigidness = int(np.where(self._rigidness==True)[0][0]+1)
+            csf.params.class_threshold = self._classification_threshold
+            csf.params.interations = self._max_interations
+            points = np.asarray(e_geometry.points)
+            colors = np.asarray(e_geometry.colors)
+            csf.setPointCloud(points)
+            ground = CSF.VecInt()  
+            non_ground = CSF.VecInt()
+            csf.do_filtering(ground, non_ground) 
+            self._g_geometry = e_geometry.select_by_index(ground)
+            self._g_geometry.points = o3d.utility.Vector3dVector(points[ground])
+            self._g_geometry.colors = o3d.utility.Vector3dVector(colors[ground])
+            self._ng_geometry = e_geometry.select_by_index(non_ground)
+            self._ng_geometry.points = o3d.utility.Vector3dVector(points[non_ground])
+            self._ng_geometry.colors = o3d.utility.Vector3dVector(colors[non_ground])
+            # 
+            self._scene.scene.remove_geometry("__ground__")
+            self._scene.scene.remove_geometry("__g_bounds__")
+            self._scene.scene.add_geometry(
+                "__ground__", self._g_geometry, self.settings.material
+            )
+            self._fileedit_ground.text = "({0} points)".format(len(self._g_geometry.points))
+            g_bounds = self._g_geometry.get_axis_aligned_bounding_box()
+            g_bounds.color = (1, 0, 0)
+            self._scene.scene.add_geometry("__g_bounds__", g_bounds, self.settings.material)
+            # 
+            self._scene.scene.remove_geometry("__non_ground__")
+            self._scene.scene.remove_geometry("__ng_bounds__")
+            self._scene.scene.add_geometry(
+                "__non_ground__", self._ng_geometry, self.settings.material
+            )
+            self._fileedit_non_ground.text = "({0} points)".format(len(self._ng_geometry.points))
+            ng_bounds = self._ng_geometry.get_axis_aligned_bounding_box()
+            ng_bounds.color = (1, 0, 0)
+            self._scene.scene.add_geometry("__ng_bounds__", ng_bounds, self.settings.material)
+        
 
     def _on_menu_downsampling(self):
         em = self.window.theme.font_size
