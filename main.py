@@ -812,41 +812,42 @@ class AppWindow:
 
 
     def _on_menu_crop_geometry(self):
-        if self._geometry is not None or self._d_geometry is not None:
-            c_geometry = None
-            if self._d_geometry is None:
-                c_geometry = self._geometry
-            else:
-                c_geometry = self._d_geometry
+        c_geometry = None
+        if self._checkeds[0]:
+            c_geometry = self._geometry
+        elif self._checkeds[1]:
+            c_geometry = self._d_geometry
+        elif self._checkeds[2]:
+            c_geometry = self._c_geometry
+        elif self._checkeds[3]:
+            c_geometry = self._s_geometry
+        elif self._checkeds[4]:
+            c_geometry = self._g_geometry
+        else:
+            c_geometry = self._ng_geometry
 
-            if c_geometry is not None:
-                dir_path = pathlib.Path().absolute()
-                tmp = os.path.join(dir_path,"tmp.pcd") 
-                s_tmp = os.path.join(dir_path,"crop_geometry.py") 
-                o3d.io.write_point_cloud(tmp, c_geometry)
-                list1=["python", s_tmp]
-                tmp = subprocess.call(list1)
-                save_path = os.path.join(dir_path,"c_geo.pcd") 
-                self._on_filedlg_done(save_path)
+        if c_geometry is not None:
+            dir_path = pathlib.Path().absolute()
+            tmp = os.path.join(dir_path,"tmp.pcd") 
+            s_tmp = os.path.join(dir_path,"crop_geometry.py") 
+            o3d.io.write_point_cloud(tmp, c_geometry)
+            list1=["python", s_tmp]
+            tmp = subprocess.call(list1)
+            save_path = os.path.join(dir_path,"c_geo.pcd") 
+            self._on_filedlg_done(save_path)
 
     def _on_menu_export_las(self):
         len_true = np.sum(self._checkeds)
         if len_true != 1:
             self.window.show_message_box("Warning", "Chi chon mot geometry de export!")
         else:
-            if (
-                self._geometry is not None
-                or self._d_geometry is not None
-                or self._c_geometry is not None
-                or self._s_geometry is not None
-            ):
-                dlg = gui.FileDialog(
-                    gui.FileDialog.SAVE, "Choose file to save", self.window.theme
-                )
-                dlg.add_filter(".las", "LAS files (.las)")
-                dlg.set_on_cancel(self._on_file_dialog_cancel)
-                dlg.set_on_done(self._on_export_las_dialog_done)
-                self.window.show_dialog(dlg)
+            dlg = gui.FileDialog(
+                gui.FileDialog.SAVE, "Choose file to save", self.window.theme
+            )
+            dlg.add_filter(".las", "LAS files (.las)")
+            dlg.set_on_cancel(self._on_file_dialog_cancel)
+            dlg.set_on_done(self._on_export_las_dialog_done)
+            self.window.show_dialog(dlg)
 
     def _on_menu_export(self):
         dlg = gui.FileDialog(
@@ -866,8 +867,12 @@ class AppWindow:
             e_geometry = self._d_geometry
         elif self._checkeds[2]:
             e_geometry = self._c_geometry
-        else:
+        elif self._checkeds[3]:
             e_geometry = self._s_geometry
+        elif self._checkeds[4]:
+            e_geometry = self._g_geometry
+        else:
+            e_geometry = self._ng_geometry
 
         las = pylas.create(point_format_id=self._infile.point_format.id)
         las.header = self._infile.header
